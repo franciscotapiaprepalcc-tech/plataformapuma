@@ -434,17 +434,19 @@
           }
         });
 
-        // 4. Asistencias (1 diaria por curso/fecha/estudiante): unión respetando bajas y re-escaneos posteriores
+        // 4. Asistencias (1 diaria por curso/fecha/estudiante): unión estricta por studentId individual
         const attMap = new Map();
         [...remote.attendance, ...local.attendance].forEach(att => {
           if (!att || !att.courseId || !att.date || !att.studentId) return;
-          const key = `${att.courseId}|${att.date}|${att.studentId}`;
+          const cleanStudentId = String(att.studentId).trim();
+          if (!cleanStudentId || cleanStudentId === 'admin') return;
+          const key = `${att.courseId}|${att.date}|${cleanStudentId}`;
           const delTs = Number(mergedDeletedAttendance[key] || 0);
           const itemTs = Number(att.createdAtTs || 1);
           if (delTs > itemTs) return;
           const prev = attMap.get(key);
           if (!prev || Number(att.createdAtTs || 0) >= Number(prev.createdAtTs || 0)) {
-            attMap.set(key, att);
+            attMap.set(key, { ...att, studentId: cleanStudentId });
           }
         });
 
@@ -3025,27 +3027,33 @@
       }
 
       function getCourseRosterForAttendance(course) {
-        const enrolledIds = new Set(course.enrolledStudentIds || []);
+        const enrolledIds = new Set(Array.isArray(course.enrolledStudentIds) ? course.enrolledStudentIds : []);
         (appState.db.attendance || [])
-          .filter(a => a.courseId === course.id)
+          .filter(a => a.courseId === course.id && a.studentId)
           .forEach(a => enrolledIds.add(a.studentId));
         return appState.db.students
-          .filter(s => enrolledIds.has(s.id))
+          .filter(s => s && s.id && enrolledIds.has(s.id))
           .sort((a, b) => a.name.localeCompare(b.name, 'es'));
       }
 
       function renderAttendanceModalListsHtml(course, todayStr) {
+        const roster = getCourseRosterForAttendance(course);
+        const rosterMap = new Map(roster.map(s => [s.id, s]));
+
         const todayRecords = (appState.db.attendance || []).filter(
-          a => a.courseId === course.id && a.date === todayStr
+          a => a.courseId === course.id && a.date === todayStr && a.studentId && a.studentId !== 'admin'
         );
         const registeredByStudentId = new Map();
         todayRecords.forEach(r => {
           if (!registeredByStudentId.has(r.studentId)) {
-            registeredByStudentId.set(r.studentId, r);
+            const matchedStu = rosterMap.get(r.studentId) || getStudentById(r.studentId);
+            registeredByStudentId.set(r.studentId, {
+              ...r,
+              studentName: matchedStu ? matchedStu.name : r.studentName
+            });
           }
         });
 
-        const roster = getCourseRosterForAttendance(course);
         const pendingStudents = roster.filter(s => !registeredByStudentId.has(s.id));
 
         const pendingHtml =
@@ -3343,14 +3351,32 @@
             // Descargar último estado para detectar si una asistencia previa fue borrada por el docente
             await syncNow({ silent: true, skipRender: true });
 
+            // Validar que el usuario actual siga siendo el estudiante autenticado
+            const activeStudent = appState.session && appState.session.role === 'student'
+              ? getStudentById(appState.session.user.id) || appState.session.user
+              : student;
+
+            if (!activeStudent || !activeStudent.id || activeStudent.id === 'admin') {
+              showToast('No se pudo identificar la cuenta del estudiante.', 'error');
+              closeModal();
+              return false;
+            }
+
             const targetCourse = getCourseById(scannedCourseId) || courseContext;
-            const key = `${scannedCourseId}|${scannedDate}|${student.id}`;
+            if (targetCourse && Array.isArray(targetCourse.enrolledStudentIds)) {
+              if (!targetCourse.enrolledStudentIds.includes(activeStudent.id)) {
+                targetCourse.enrolledStudentIds.push(activeStudent.id);
+                appState.db.meta.structureUpdatedAt = Date.now();
+              }
+            }
+
+            const key = `${scannedCourseId}|${scannedDate}|${activeStudent.id}`;
             if (appState.db.meta.deletedAttendance[key]) {
               delete appState.db.meta.deletedAttendance[key];
             }
 
             const already = appState.db.attendance.find(
-              a => a.courseId === scannedCourseId && a.date === scannedDate && a.studentId === student.id
+              a => a.courseId === scannedCourseId && a.date === scannedDate && a.studentId === activeStudent.id
             );
 
             if (!already) {
@@ -3358,8 +3384,8 @@
                 id: uid('att'),
                 courseId: scannedCourseId,
                 courseTitle: targetCourse ? targetCourse.title : scannedCourseId,
-                studentId: student.id,
-                studentName: student.name,
+                studentId: activeStudent.id,
+                studentName: activeStudent.name,
                 date: scannedDate,
                 time: getSonoraTimeHHMM(),
                 createdAtTs: Date.now()
@@ -3377,7 +3403,7 @@
                     </svg>
                   </div>
                   <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 leading-snug mb-2">
-                    ${esc(student.name)}, Asistencia del dia ${esc(scannedDate)} ha sido registrada.
+                    ${esc(activeStudent.name)}, Asistencia del dia ${esc(scannedDate)} ha sido registrada.
                   </h3>
                   ${targetCourse ? `<p class="text-xs font-semibold text-emerald-700 mb-2">Curso: ${esc(targetCourse.title)}</p>` : ''}
                   <p class="text-xs font-semibold ${res && res.ok ? 'text-emerald-600' : 'text-amber-600'} mb-5">
