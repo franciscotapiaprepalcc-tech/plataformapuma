@@ -141,7 +141,7 @@
             modules: [
               {
                 id: 'm-3',
-                title: 'Bloque 1: Estática y Momento de Torsión',
+                title: 'Sesión 1: Estática y Momento de Torsión',
                 resources: [
                   { id: 'r-4', type: 'Formulario', title: 'Fórmulas de Torque (τ = F · d · sen θ)', detail: 'Incluye convención de signos y ejemplos resueltos.' }
                 ],
@@ -171,14 +171,14 @@
             modules: [
               {
                 id: 'm-4',
-                title: 'Módulo 1: Composición Fotográfica',
+                title: 'Sesión 1: Composición Fotográfica',
                 resources: [
                   { id: 'r-5', type: 'Guía', title: 'Regla de los Tercios y Larga Exposición', detail: 'Parámetros básicos de apertura, velocidad de obturación e ISO.' }
                 ],
                 assignments: [
                   {
                     id: 't-4',
-                    title: 'Portafolio: Luz y Sombra en Cananea',
+                    title: 'Portafolio: Luz y Sombra',
                     instructions: 'Sube el enlace a una carpeta con 3 fotografías originales aplicando regla de tercios sin uso de IA.',
                     dueDate: '2026-12-01',
                     maxPoints: 100
@@ -340,11 +340,11 @@
 
       const appState = {
         db: loadState(),
-        session: null, // { role: 'admin' | 'student', user: {...} }
-        authMode: 'login', // 'login' | 'register'
-        activeView: 'dashboard', // 'dashboard' | 'courses' | 'course-detail' | 'grades' | 'students' | 'catalog' | 'profile'
+        session: null,
+        authMode: 'login',
+        activeView: 'dashboard',
         selectedCourseId: null,
-        courseTab: 'content', // 'content' | 'attendance'
+        courseTab: 'content',
         mobileMenuOpen: false,
         searchQuery: '',
         calYear: new Date().getFullYear(),
@@ -457,7 +457,6 @@
 
         app.innerHTML = `
           <div class="min-h-screen flex flex-col lg:flex-row bg-slate-100">
-            <!-- Left Institutional Banner -->
             <div class="lg:w-5/12 bg-gradient-to-br from-navy-900 via-navy-800 to-slate-900 text-white p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
               <div class="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-puma-500/15 blur-2xl pointer-events-none"></div>
               <div class="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-blue-500/15 blur-2xl pointer-events-none"></div>
@@ -487,7 +486,6 @@
               </div>
             </div>
 
-            <!-- Right Auth Card -->
             <div class="flex-1 flex items-center justify-center p-6 sm:p-10">
               <div class="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200/80 p-7 sm:p-9 fade-in">
                 ${isRegister ? renderRegisterFormHtml() : renderLoginFormHtml()}
@@ -693,7 +691,6 @@
 
         app.innerHTML = `
           <div class="min-h-screen flex flex-col md:flex-row bg-slate-50">
-            <!-- Sidebar Desktop + Mobile Drawer -->
             <aside class="bg-navy-900 text-white w-full md:w-64 md:min-h-screen flex-shrink-0 flex flex-col">
               <div class="px-5 py-4 flex items-center justify-between border-b border-white/10">
                 <div class="flex items-center gap-2.5">
@@ -743,7 +740,6 @@
               </div>
             </aside>
 
-            <!-- Main Content Area -->
             <main class="flex-1 flex flex-col min-w-0">
               <header class="bg-white border-b border-slate-200 px-5 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -809,7 +805,6 @@
           grid: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>',
           check: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
           users: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>',
-          clipboard: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>',
           user: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>'
         };
         return icons[name] || '';
@@ -856,7 +851,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             ${statCard('Cursos Activos', courses.length, 'Materias publicadas', 'bg-blue-50 text-blue-700')}
             ${statCard('Estudiantes', students.length, 'Cuentas registradas', 'bg-emerald-50 text-emerald-700')}
-            ${statCard('Actividades', totalAssignments, 'Tareas en módulos', 'bg-amber-50 text-amber-700')}
+            ${statCard('Actividades', totalAssignments, 'Tareas en sesiones', 'bg-amber-50 text-amber-700')}
             ${statCard('Por Calificar', pendingSubs, 'Entregas pendientes', 'bg-rose-50 text-rose-700')}
           </div>
 
@@ -895,21 +890,13 @@
         `;
 
         wireAssignmentsCalendarEvents(container);
-        document.getElementById('dash-go-students').addEventListener('click', () => {
-          appState.activeView = 'students';
-          renderMain();
-        });
-        document.getElementById('btn-courses-top-attendance').addEventListener('click', () => {
-          if (isAdmin) {
-            if (list.length === 1) {
-              openAdminAttendanceModal(list[0]);
-            } else {
-              openSelectCourseForAttendanceModal(list);
-            }
-          } else {
-            openStudentAttendanceScannerModal(null);
-          }
-        });
+        const goStudentsBtn = document.getElementById('dash-go-students');
+        if (goStudentsBtn) {
+          goStudentsBtn.addEventListener('click', () => {
+            appState.activeView = 'students';
+            renderMain();
+          });
+        }
 
         container.querySelectorAll('[data-open-course]').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -1052,7 +1039,7 @@
           container.innerHTML = `
             <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
               <h2 class="text-base font-bold text-slate-900 mb-2">${isAdmin ? 'No hay cursos creados' : 'No estás inscrito en ningún curso'}</h2>
-              <p class="text-sm text-slate-500 mb-5">${isAdmin ? 'Crea tu primer curso para comenzar a subir módulos y tareas.' : 'Explora el catálogo para matricularte en tus materias.'}</p>
+              <p class="text-sm text-slate-500 mb-5">${isAdmin ? 'Crea tu primer curso para comenzar a subir sesiones y tareas.' : 'Explora el catálogo para matricularte en tus materias.'}</p>
               <button type="button" id="empty-course-action" class="px-5 py-2.5 rounded-xl bg-puma-500 hover:bg-puma-600 text-white text-sm font-semibold cursor-pointer">
                 ${isAdmin ? '+ Crear primer curso' : 'Explorar catálogo'}
               </button>
@@ -1099,7 +1086,7 @@
                     <p class="text-xs font-semibold text-puma-600 mb-1">${esc(c.category)}</p>
                     <p class="text-sm text-slate-600 line-clamp-3">${esc(c.description)}</p>
                     <div class="mt-4 flex items-center gap-4 text-xs text-slate-500">
-                      <span>${c.modules.length} módulos</span>
+                      <span>${c.modules.length} sesiones</span>
                       <span>${c.enrolledStudentIds.length} inscritos</span>
                     </div>
                   </div>
@@ -1123,6 +1110,21 @@
           </div>
         `;
 
+        const topAttendanceBtn = document.getElementById('btn-courses-top-attendance');
+        if (topAttendanceBtn) {
+          topAttendanceBtn.addEventListener('click', () => {
+            if (isAdmin) {
+              if (list.length === 1) {
+                openAdminAttendanceModal(list[0]);
+              } else {
+                openSelectCourseForAttendanceModal(list);
+              }
+            } else {
+              openStudentAttendanceScannerModal(null);
+            }
+          });
+        }
+
         container.querySelectorAll('[data-open-course]').forEach(btn => {
           btn.addEventListener('click', () => {
             appState.selectedCourseId = btn.getAttribute('data-open-course');
@@ -1137,7 +1139,7 @@
             const id = btn.getAttribute('data-delete-course');
             const course = getCourseById(id);
             openModal('Confirmar eliminación', `
-              <p class="text-sm text-slate-600 mb-5">¿Deseas eliminar el curso <strong>${esc(course?.title)}</strong>? Esta acción eliminará sus módulos y entregas asociadas.</p>
+              <p class="text-sm text-slate-600 mb-5">¿Deseas eliminar el curso <strong>${esc(course?.title)}</strong>? Esta acción eliminará sus sesiones y entregas asociadas.</p>
               <div class="flex justify-end gap-2">
                 <button type="button" id="cancel-del-course" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer">Cancelar</button>
                 <button type="button" id="confirm-del-course" class="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-semibold cursor-pointer">Eliminar curso</button>
@@ -1170,7 +1172,7 @@
 
         container.innerHTML = `
           <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <p class="text-sm text-slate-600">Matricúlate en tus materias para acceder a sus módulos y actividades.</p>
+            <p class="text-sm text-slate-600">Matricúlate en tus materias para acceder a sus sesiones y actividades.</p>
             <input id="catalog-search" type="search" value="${esc(appState.searchQuery)}" placeholder="Buscar por nombre o clave..."
               class="w-full sm:w-72 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-puma-500" />
           </div>
@@ -1262,7 +1264,6 @@
         const userId = appState.session.user.id;
 
         container.innerHTML = `
-          <!-- Barra principal con Tomar Asistencia primero -->
           <div class="mb-5 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
             <div class="flex flex-wrap items-center gap-3">
               <button type="button" id="btn-take-attendance"
@@ -1305,7 +1306,6 @@
               : ''
           }
 
-          <!-- Course Banner -->
           <div class="rounded-2xl bg-gradient-to-r ${course.color || 'from-blue-600 to-indigo-700'} text-white p-6 sm:p-8 mb-6 shadow-sm">
             <div class="flex flex-wrap items-center gap-2 text-xs font-semibold opacity-90 mb-2">
               <span class="px-2.5 py-0.5 rounded-full bg-white/20">${esc(course.code)}</span>
@@ -1321,7 +1321,6 @@
             isAdmin && appState.courseTab === 'attendance'
               ? renderCourseAttendanceBookHtml(course)
               : `
-          <!-- Announcements -->
           ${
             course.announcements.length > 0
               ? `<div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6 shadow-sm">
@@ -1346,7 +1345,6 @@
               : ''
           }
 
-          <!-- Modules -->
           <div class="space-y-5">
             ${
               course.modules.length === 0
@@ -1904,90 +1902,6 @@
             }
           </div>
         `;
-      }
-
-      function renderAdminAttendanceBook(selectedCourseFilter = 'ALL') {
-        const container = document.getElementById('view-content');
-        const courses = appState.db.courses;
-        const students = appState.db.students;
-        const allAttendance = appState.db.attendance || [];
-
-        const filteredAttendance = selectedCourseFilter === 'ALL'
-          ? allAttendance
-          : allAttendance.filter(a => a.courseId === selectedCourseFilter);
-
-        container.innerHTML = `
-          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 class="text-base font-bold text-slate-900">Libro de Asistencia</h2>
-                <p class="text-xs text-slate-500">Resumen de asistencias registradas por cada estudiante.</p>
-              </div>
-              <div class="flex items-center gap-2">
-                <label for="att-book-course-filter" class="text-xs font-semibold text-slate-600">Curso:</label>
-                <select id="att-book-course-filter" class="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800">
-                  <option value="ALL" ${selectedCourseFilter === 'ALL' ? 'selected' : ''}>Todos los cursos</option>
-                  ${courses.map(c => `<option value="${esc(c.id)}" ${selectedCourseFilter === c.id ? 'selected' : ''}>${esc(c.code)} - ${esc(c.title)}</option>`).join('')}
-                </select>
-              </div>
-            </div>
-            ${
-              students.length === 0
-                ? '<div class="p-8 text-center text-sm text-slate-500">No hay estudiantes registrados todavía.</div>'
-                : `<div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                      <thead class="bg-slate-50 text-xs uppercase text-slate-500 border-b border-slate-200">
-                        <tr>
-                          <th class="px-5 py-3">Nombre del Estudiante</th>
-                          <th class="px-5 py-3">Grupo</th>
-                          <th class="px-5 py-3">Asistencias</th>
-                          <th class="px-5 py-3">Detalle de Fechas y Cursos</th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-100">
-                        ${students.map(stu => {
-                          const records = filteredAttendance.filter(a => a.studentId === stu.id);
-                          return `
-                            <tr class="hover:bg-slate-50/70">
-                              <td class="px-5 py-3.5">
-                                <div class="font-semibold text-slate-900">${esc(stu.name)}</div>
-                                <div class="text-xs text-slate-400">@${esc(stu.username)}</div>
-                              </td>
-                              <td class="px-5 py-3.5">
-                                <span class="px-2 py-0.5 rounded-md bg-slate-100 text-xs font-medium text-slate-700">${esc(stu.group)}</span>
-                              </td>
-                              <td class="px-5 py-3.5">
-                                <span class="px-3 py-1 rounded-full text-xs font-bold ${
-                                  records.length > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                }">
-                                  ${records.length} ${records.length === 1 ? 'asistencia' : 'asistencias'}
-                                </span>
-                              </td>
-                              <td class="px-5 py-3.5 text-xs text-slate-600">
-                                ${
-                                  records.length === 0
-                                    ? '<span class="text-slate-400">Sin registros</span>'
-                                    : `<div class="flex flex-wrap gap-1.5">
-                                        ${records.map(r => {
-                                          const c = getCourseById(r.courseId);
-                                          return `<span class="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-800 font-medium">${esc(r.date)} · ${esc(c ? c.code : r.courseTitle)}</span>`;
-                                        }).join('')}
-                                      </div>`
-                                }
-                              </td>
-                            </tr>
-                          `;
-                        }).join('')}
-                      </tbody>
-                    </table>
-                  </div>`
-            }
-          </div>
-        `;
-
-        document.getElementById('att-book-course-filter').addEventListener('change', e => {
-          renderAdminAttendanceBook(e.target.value);
-        });
       }
 
       function renderStudentProfile() {
@@ -2617,68 +2531,6 @@
         });
       }
 
-      function openBackupModal() {
-        openModal('Respaldo de Datos (GitHub Pages)', `
-          <p class="text-xs text-slate-600 mb-4 leading-relaxed">
-            Como esta aplicación funciona de forma estática en GitHub Pages, los cursos, estudiantes y entregas se guardan en el navegador (<code>localStorage</code>). Puedes descargar un respaldo JSON o restaurar los datos iniciales.
-          </p>
-          <div class="space-y-3">
-            <button type="button" id="btn-export-json" class="w-full py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold cursor-pointer">
-              Descargar respaldo (.json)
-            </button>
-            <label class="block w-full py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-center text-xs font-semibold text-slate-700 cursor-pointer">
-              Importar respaldo (.json)
-              <input id="input-import-json" type="file" accept="application/json" class="hidden" />
-            </label>
-            <button type="button" id="btn-reset-demo" class="w-full py-2.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold cursor-pointer">
-              Restaurar datos iniciales de demostración
-            </button>
-          </div>
-        `, () => {
-          document.getElementById('btn-export-json').addEventListener('click', () => {
-            const blob = new Blob([JSON.stringify(appState.db, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `puma-steam-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast('Respaldo descargado', 'success');
-          });
-
-          document.getElementById('input-import-json').addEventListener('change', e => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = ev => {
-              try {
-                const parsed = JSON.parse(ev.target.result);
-                if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
-                  appState.db = parsed;
-                  saveState();
-                  closeModal();
-                  showToast('Respaldo importado correctamente', 'success');
-                  renderMain();
-                } else {
-                  showToast('Formato JSON no válido', 'error');
-                }
-              } catch (err) {
-                showToast('Error al leer el archivo JSON', 'error');
-              }
-            };
-            reader.readAsText(file);
-          });
-
-          document.getElementById('btn-reset-demo').addEventListener('click', () => {
-            appState.db = JSON.parse(JSON.stringify(DEFAULT_DATA));
-            saveState();
-            closeModal();
-            showToast('Datos restaurados a valores iniciales', 'info');
-            renderMain();
-          });
-        });
-      }
-
       // ==================== ASISTENCIA CON CÓDIGO QR ====================
       function getTodayFormatted() {
         const now = new Date();
@@ -2731,7 +2583,6 @@
               Proyecta este código QR para que tus estudiantes lo escaneen con su cámara desde la opción <strong>"Tomar Asistencia"</strong>.
             </p>
 
-            <!-- Contenedor de QR grande optimizado para proyector -->
             <div class="bg-white p-6 rounded-2xl border-4 border-slate-900 shadow-xl inline-flex items-center justify-center mb-4">
               <div id="projector-qr-box" class="flex items-center justify-center"></div>
             </div>
@@ -2910,7 +2761,7 @@
         const month = appState.calMonth;
         const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const firstDay = new Date(year, month, 1);
-        const startOffset = (firstDay.getDay() + 6) % 7; // Monday = 0
+        const startOffset = (firstDay.getDay() + 6) % 7;
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const dueMap = getAssignmentsByDateMap(courses);
         const selected = appState.calSelectedDate;
@@ -2946,7 +2797,6 @@
           `);
         }
 
-        // Also collect upcoming tasks in current month
         const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
         const monthTasks = Object.keys(dueMap)
           .filter(k => k.startsWith(monthPrefix))
