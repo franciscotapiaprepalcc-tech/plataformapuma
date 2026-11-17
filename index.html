@@ -577,11 +577,14 @@
         try {
           const remoteAtt = await fetchRealtimeAttendanceCloud();
           const currentLocal = Array.isArray(appState.db.attendance) ? appState.db.attendance : [];
-          const merged = mergeCollectionsById(
-            remoteAtt || [],
-            currentLocal,
-            a => `${a.courseId}|${a.date}|${a.studentId}`
-          );
+          const isRecentMutation = Date.now() - appState.lastLocalMutationAt < 4500;
+          const merged = isRecentMutation
+            ? mergeCollectionsById([], currentLocal, a => `${a.courseId}|${a.date}|${a.studentId}`)
+            : mergeCollectionsById(
+                remoteAtt || [],
+                currentLocal,
+                a => `${a.courseId}|${a.date}|${a.studentId}`
+              );
           const changed = JSON.stringify(merged) !== JSON.stringify(currentLocal);
           if (changed) {
             appState.db.attendance = merged;
@@ -598,7 +601,7 @@
               renderCourseDetail();
             }
           }
-          if (pushLocal || (remoteAtt !== null && merged.length > remoteAtt.length)) {
+          if (pushLocal || isRecentMutation || (remoteAtt !== null && merged.length > remoteAtt.length)) {
             const bucketKey = getAttendanceBucketKey();
             const postRes = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(bucketKey)}`, {
               method: 'POST',
@@ -613,35 +616,170 @@
         }
       }
 
-      function refreshOpenAttendanceModalIfVisible() {
-        const attList = document.getElementById('att-today-list');
-        const courseIdAttr = attList ? attList.getAttribute('data-att-course-id') : null;
-        if (!attList || !courseIdAttr) return;
-        const todayStr = getTodayFormatted();
+      function getCourseRosterForAttendance(course) {
+        const enrolledIds = new Set(course.enrolledStudentIds || []);
+        (appState.db.attendance || [])
+          .filter(a => a.courseId === course.id)
+          .forEach(a => enrolledIds.add(a.studentId));
+        return appState.db.students
+          .filter(s => enrolledIds.has(s.id))
+          .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      }
+
+      function renderAttendanceModalListsHtml(course, todayStr) {
         const todayRecords = (appState.db.attendance || []).filter(
-          a => a.courseId === courseIdAttr && a.date === todayStr
+          a => a.courseId === course.id && a.date === todayStr
         );
-        const countEl = document.getElementById('att-today-count');
-        if (countEl) {
-          countEl.textContent = `Asistencias registradas hoy (${todayRecords.length})`;
-        }
-        attList.innerHTML =
-          todayRecords.length === 0
-            ? '<p class="text-xs text-slate-400">Ningún estudiante ha escaneado el código todavía.</p>'
-            : todayRecords
+        const registeredByStudentId = new Map();
+        todayRecords.forEach(r => {
+          if (!registeredByStudentId.has(r.studentId)) {
+            registeredByStudentId.set(r.studentId, r);
+          }
+        });
+
+        const roster = getCourseRosterForAttendance(course);
+        const pendingStudents = roster.filter(s => !registeredByStudentId.has(s.id));
+
+        const pendingHtml =
+          pendingStudents.length === 0
+            ? `<div class="px-3 py-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs text-emerald-700 font-medium">
+                 ✓ Todos los estudiantes inscritos (${roster.length}) ya tienen asistencia hoy.
+               </div>`
+            : pendingStudents
                 .map(
-                  r => `
-                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs">
-                  <span class="font-semibold text-slate-900">✓ ${esc(r.studentName)}</span>
-                  <span class="text-slate-500">${esc(r.time)}</span>
+                  stu => `
+                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-50/80 border border-amber-200 text-xs">
+                  <div class="min-w-0">
+                    <span class="font-bold text-slate-900 block truncate">${esc(stu.name)}</span>
+                    <span class="text-[11px] text-slate-500">@${esc(stu.username)} · ${esc(stu.group)}</span>
+                  </div>
+                  <button type="button" data-manual-mark-stu="${esc(stu.id)}"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex-shrink-0 cursor-pointer transition">
+                    + Marcar asistencia
+                  </button>
                 </div>
               `
                 )
                 .join('');
+
+        const registeredList = Array.from(registeredByStudentId.values());
+        const registeredHtml =
+          registeredList.length === 0
+            ? '<p class="text-xs text-slate-400 py-1">Ningún estudiante ha registrado asistencia hoy todavía.</p>'
+            : registeredList
+                .map(
+                  r => `
+                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs">
+                  <div class="min-w-0">
+                    <span class="font-semibold text-slate-900">✓ ${esc(r.studentName)}</span>
+                    <span class="text-slate-500 ml-1.5">(${esc(r.time)})</span>
+                  </div>
+                  <button type="button" data-del-att-id="${esc(r.id)}" data-del-att-stu="${esc(r.studentId)}" data-del-att-course="${esc(course.id)}" data-del-att-date="${esc(todayStr)}"
+                    class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold flex-shrink-0 cursor-pointer transition" title="Eliminar asistencia">
+                    Eliminar
+                  </button>
+                </div>
+              `
+                )
+                .join('');
+
+        return {
+          pendingCount: pendingStudents.length,
+          registeredCount: registeredList.length,
+          html: `
+            <div class="mb-3">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-bold uppercase tracking-wide text-amber-800">Pendientes por capturar (${pendingStudents.length})</span>
+                <span class="text-[11px] text-slate-400">1 asistencia por día</span>
+              </div>
+              <div class="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
+                ${pendingHtml}
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Asistencias registradas hoy (${registeredList.length})</span>
+              </div>
+              <div class="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
+                ${registeredHtml}
+              </div>
+            </div>
+          `
+        };
+      }
+
+      function wireAttendanceModalListEvents(course, todayStr) {
+        const attList = document.getElementById('att-today-list');
+        if (!attList) return;
+
+        attList.querySelectorAll('[data-manual-mark-stu]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const stuId = btn.getAttribute('data-manual-mark-stu');
+            const stu = getStudentById(stuId);
+            if (!stu) return;
+            if (!Array.isArray(appState.db.attendance)) appState.db.attendance = [];
+            const already = appState.db.attendance.find(
+              a => a.courseId === course.id && a.date === todayStr && a.studentId === stu.id
+            );
+            if (already) {
+              showToast(`${stu.name} ya tiene asistencia registrada hoy`, 'info');
+              refreshOpenAttendanceModalIfVisible();
+              return;
+            }
+            appState.db.attendance.push({
+              id: uid('att'),
+              courseId: course.id,
+              courseTitle: course.title,
+              studentId: stu.id,
+              studentName: stu.name,
+              date: todayStr,
+              time: getSonoraTimeHHMM()
+            });
+            refreshOpenAttendanceModalIfVisible();
+            if (appState.activeView === 'course-detail' && appState.courseTab === 'attendance') {
+              renderCourseDetail();
+            }
+            await saveState();
+            showToast(`Asistencia manual registrada: ${stu.name}`, 'success');
+          });
+        });
+
+        attList.querySelectorAll('[data-del-att-stu]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const stuId = btn.getAttribute('data-del-att-stu');
+            const cId = btn.getAttribute('data-del-att-course');
+            const dStr = btn.getAttribute('data-del-att-date');
+            appState.db.attendance = (appState.db.attendance || []).filter(
+              a => !(a.courseId === cId && a.date === dStr && a.studentId === stuId)
+            );
+            refreshOpenAttendanceModalIfVisible();
+            if (appState.activeView === 'course-detail' && appState.courseTab === 'attendance') {
+              renderCourseDetail();
+            }
+            await saveState();
+            showToast('Asistencia eliminada', 'info');
+          });
+        });
+      }
+
+      function refreshOpenAttendanceModalIfVisible() {
+        const attList = document.getElementById('att-today-list');
+        const courseIdAttr = attList ? attList.getAttribute('data-att-course-id') : null;
+        if (!attList || !courseIdAttr) return;
+        const course = getCourseById(courseIdAttr);
+        if (!course) return;
+        const todayStr = getTodayFormatted();
+        const rendered = renderAttendanceModalListsHtml(course, todayStr);
+        const countEl = document.getElementById('att-today-count');
+        if (countEl) {
+          countEl.textContent = `Control de Asistencia Hoy · ${rendered.registeredCount} presentes / ${rendered.pendingCount} pendientes`;
+        }
+        attList.innerHTML = rendered.html;
+        wireAttendanceModalListEvents(course, todayStr);
       }
 
       async function pullFromCloud(silent = true, skipRender = false) {
-        if (silent && Date.now() - appState.lastLocalMutationAt < 5000) {
+        if (Date.now() - appState.lastLocalMutationAt < 5000) {
           return false;
         }
         await syncRealtimeAttendanceCloud(false);
@@ -719,7 +857,17 @@
                 try {
                   const latestRemote = await fetchRemoteDatabase(cfg, gistId);
                   if (latestRemote) {
-                    appState.db = mergeDatabases(latestRemote, appState.db, true);
+                    const isRecentMutation = Date.now() - appState.lastLocalMutationAt < 4500;
+                    appState.db = isRecentMutation
+                      ? {
+                          ...mergeDatabases(latestRemote, appState.db, true),
+                          attendance: mergeCollectionsById(
+                            [],
+                            appState.db.attendance,
+                            a => `${a.courseId}|${a.date}|${a.studentId}`
+                          )
+                        }
+                      : mergeDatabases(latestRemote, appState.db, true);
                     try {
                       localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
                     } catch (e) {}
@@ -2023,6 +2171,17 @@
               renderMain();
             });
           });
+          container.querySelectorAll('[data-book-del-att]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const [cId, dStr, sId] = btn.getAttribute('data-book-del-att').split('|');
+              appState.db.attendance = (appState.db.attendance || []).filter(
+                a => !(a.courseId === cId && a.date === dStr && a.studentId === sId)
+              );
+              renderCourseDetail();
+              await saveState();
+              showToast('Asistencia eliminada del libro', 'info');
+            });
+          });
         } else {
           container.querySelectorAll('[data-submit-assign]').forEach(btn => {
             btn.addEventListener('click', () => openSubmitAssignmentModal(course, btn.getAttribute('data-submit-assign')));
@@ -2369,7 +2528,7 @@
                                   records.length === 0
                                     ? '<span class="text-slate-400">Sin asistencias</span>'
                                     : `<div class="flex flex-wrap gap-1.5">
-                                        ${records.map(r => `<span class="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-800 font-medium">${esc(r.date)} (${esc(r.time)})</span>`).join('')}
+                                        ${records.map(r => `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-800 font-medium">${esc(r.date)} (${esc(r.time)}) <button type="button" data-book-del-att="${esc(course.id)}|${esc(r.date)}|${esc(stu.id)}" class="text-rose-600 hover:text-rose-800 font-bold cursor-pointer" title="Eliminar asistencia">×</button></span>`).join('')}
                                       </div>`
                                 }
                               </td>
@@ -3048,9 +3207,7 @@
         const cfg = getCloudConfig();
         const qrPayload = `PUMA_ASISTENCIA|${course.id}|${todayStr}|${cfg.gistId || ''}|${cfg.token || ''}`;
         const manualCode = `PUMA_ASISTENCIA|${course.id}|${todayStr}`;
-        const todayRecords = (appState.db.attendance || []).filter(
-          a => a.courseId === course.id && a.date === todayStr
-        );
+        const initialLists = renderAttendanceModalListsHtml(course, todayStr);
 
         openModal(`Tomar Asistencia · ${course.title}`, `
           <div class="flex flex-col items-center text-center">
@@ -3060,43 +3217,34 @@
               <span>Día ${esc(todayStr)} (Hermosillo, Sonora)</span>
             </div>
             <div id="att-cloud-status-pill" class="mb-3 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
-              ● Base de datos de asistencia en tiempo real activa (UTC-7 Hermosillo)
+              ● Base de datos de asistencia en tiempo real activa (1 asistencia diaria)
             </div>
-            <p class="text-sm text-slate-600 mb-4 max-w-md">
-              Proyecta este código QR para que tus estudiantes lo escaneen con su cámara desde la opción <strong>"Tomar Asistencia"</strong>.
+            <p class="text-sm text-slate-600 mb-3 max-w-md">
+              Proyecta este código QR o marca manualmente en la lista superior a los alumnos que aún no han escaneado.
             </p>
 
-            <div class="bg-white p-6 rounded-2xl border-4 border-slate-900 shadow-xl inline-flex items-center justify-center mb-4">
+            <div class="bg-white p-5 rounded-2xl border-4 border-slate-900 shadow-xl inline-flex items-center justify-center mb-3">
               <div id="projector-qr-box" class="flex items-center justify-center"></div>
             </div>
 
-            <div class="text-xs text-slate-500 mb-5">
+            <div class="text-xs text-slate-500 mb-4">
               Código manual de respaldo: <code class="px-2 py-1 rounded bg-slate-100 font-mono font-bold text-slate-800 select-all">${esc(manualCode)}</code>
             </div>
 
             <div class="w-full text-left border-t border-slate-200 pt-4">
-              <div class="flex items-center justify-between mb-2">
-                <h4 id="att-today-count" class="text-xs font-bold uppercase tracking-wide text-slate-700">Asistencias registradas hoy (${todayRecords.length})</h4>
+              <div class="flex items-center justify-between mb-3">
+                <h4 id="att-today-count" class="text-xs font-bold uppercase tracking-wide text-slate-700">Control de Asistencia Hoy · ${initialLists.registeredCount} presentes / ${initialLists.pendingCount} pendientes</h4>
                 <button type="button" id="btn-refresh-att" class="text-xs font-semibold text-puma-600 hover:underline cursor-pointer">Actualizar ahora</button>
               </div>
-              <div id="att-today-list" data-att-course-id="${esc(course.id)}" class="max-h-36 overflow-y-auto space-y-1.5">
-                ${
-                  todayRecords.length === 0
-                    ? '<p class="text-xs text-slate-400">Ningún estudiante ha escaneado el código todavía.</p>'
-                    : todayRecords.map(r => `
-                        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs">
-                          <span class="font-semibold text-slate-900">✓ ${esc(r.studentName)}</span>
-                          <span class="text-slate-500">${esc(r.time)}</span>
-                        </div>
-                      `).join('')
-                }
+              <div id="att-today-list" data-att-course-id="${esc(course.id)}">
+                ${initialLists.html}
               </div>
             </div>
           </div>
         `, () => {
           const qrBox = document.getElementById('projector-qr-box');
           if (typeof QRCode !== 'undefined') {
-            const size = window.innerWidth < 480 ? 250 : 330;
+            const size = window.innerWidth < 480 ? 220 : 280;
             new QRCode(qrBox, {
               text: qrPayload,
               width: size,
@@ -3112,9 +3260,11 @@
           verifyCloudWriteAccess().then(check => {
             const pill = document.getElementById('att-cloud-status-pill');
             if (pill) {
-              pill.textContent = `● ${check.reason}`;
+              pill.textContent = `● ${check.reason} · 1 asistencia diaria`;
             }
           });
+
+          wireAttendanceModalListEvents(course, todayStr);
 
           document.getElementById('btn-refresh-att').addEventListener('click', async () => {
             await syncRealtimeAttendanceCloud(false);
