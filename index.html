@@ -62,8 +62,53 @@
       const REALTIME_ATT_API = 'https://kvdb.io/A9xP7mK2vL8qR4wN6zT1yB';
       const DEFAULT_GITHUB_TOKEN = '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';
       const DEFAULT_PUBLIC_GIST_ID = 'ebb8263d448ac9b21338823ef8d53345';
+      const SONORA_TIMEZONE = 'America/Hermosillo';
       const ADMIN_USER = 'mtrofrancisco';
       const ADMIN_PASS = '37rdo2910D';
+
+      function getSonoraParts(dateObj = new Date()) {
+        const fmt = new Intl.DateTimeFormat('en-CA', {
+          timeZone: SONORA_TIMEZONE,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        });
+        const parts = {};
+        fmt.formatToParts(dateObj).forEach(p => {
+          if (p.type !== 'literal') parts[p.type] = p.value;
+        });
+        if (parts.hour === '24') parts.hour = '00';
+        return parts;
+      }
+
+      function getSonoraISODate(dateObj = new Date()) {
+        const p = getSonoraParts(dateObj);
+        return `${p.year}-${p.month}-${p.day}`;
+      }
+
+      function getSonoraDateTime(dateObj = new Date()) {
+        const p = getSonoraParts(dateObj);
+        return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+      }
+
+      function getSonoraTimeHHMM(dateObj = new Date()) {
+        const p = getSonoraParts(dateObj);
+        return `${p.hour}:${p.minute}`;
+      }
+
+      function getSonoraTimeHHMMSS(dateObj = new Date()) {
+        const p = getSonoraParts(dateObj);
+        return `${p.hour}:${p.minute}:${p.second}`;
+      }
+
+      function getSonoraYearMonth(dateObj = new Date()) {
+        const p = getSonoraParts(dateObj);
+        return { year: Number(p.year), month: Number(p.month) - 1 };
+      }
 
       const DEFAULT_DATA = {
         courses: [
@@ -224,12 +269,17 @@
             if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
               if (!Array.isArray(parsed.attendance)) parsed.attendance = [];
               if (!Array.isArray(parsed.submissions)) parsed.submissions = [];
+              if (typeof parsed.structureUpdatedAt !== 'number') parsed.structureUpdatedAt = 0;
               return parsed;
             }
           }
         } catch (e) {}
-        return JSON.parse(JSON.stringify(DEFAULT_DATA));
+        const init = JSON.parse(JSON.stringify(DEFAULT_DATA));
+        init.structureUpdatedAt = 0;
+        return init;
       }
+
+      const sonoraNowYM = getSonoraYearMonth();
 
       const appState = {
         db: loadState(),
@@ -240,12 +290,13 @@
         courseTab: 'content',
         mobileMenuOpen: false,
         searchQuery: '',
-        calYear: new Date().getFullYear(),
-        calMonth: new Date().getMonth(),
-        calSelectedDate: new Date().toISOString().slice(0, 10),
+        calYear: sonoraNowYM.year,
+        calMonth: sonoraNowYM.month,
+        calSelectedDate: getSonoraISODate(),
         cloudSyncing: false,
         initialCloudReady: false,
-        lastSyncTime: ''
+        lastSyncTime: '',
+        lastLocalMutationAt: 0
       };
 
       function getCloudConfig() {
@@ -303,7 +354,7 @@
       function updateRealtimeIndicator() {
         const badge = document.getElementById('realtime-sync-badge');
         if (badge) {
-          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}`;
+          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo Sonora${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}`;
         }
       }
 
@@ -321,10 +372,17 @@
       }
 
       function mergeDatabases(remoteDb, localDb, preferLocalStructure = false) {
-        const base = preferLocalStructure ? localDb : remoteDb;
-        const other = preferLocalStructure ? remoteDb : localDb;
+        const remoteTs = Number(remoteDb?.structureUpdatedAt || 0);
+        const localTs = Number(localDb?.structureUpdatedAt || 0);
+        const useLocalCourses = preferLocalStructure || localTs >= remoteTs;
+        const chosenCourses = useLocalCourses
+          ? (Array.isArray(localDb.courses) ? localDb.courses : remoteDb.courses || [])
+          : (Array.isArray(remoteDb.courses) ? remoteDb.courses : localDb.courses || []);
+        const chosenStructureTs = Math.max(remoteTs, localTs);
+
         return {
-          courses: Array.isArray(base.courses) ? base.courses : other.courses || [],
+          structureUpdatedAt: chosenStructureTs,
+          courses: chosenCourses,
           students: mergeCollectionsById(remoteDb.students, localDb.students, s => s.id),
           submissions: mergeCollectionsById(
             remoteDb.submissions,
@@ -419,6 +477,49 @@
         return `att_live_${space}`;
       }
 
+      function getStructureBucketKey() {
+        const cfg = getCloudConfig();
+        const space = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_steam_default').replace(/[^a-zA-Z0-9_-]/g, '');
+        return `struct_live_${space}`;
+      }
+
+      async function fetchRealtimeStructureCloud() {
+        try {
+          const key = getStructureBucketKey();
+          const res = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(key)}?_t=${Date.now()}`, {
+            headers: { Accept: 'application/json' }
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          if (data && Array.isArray(data.courses)) {
+            return {
+              courses: data.courses,
+              structureUpdatedAt: Number(data.structureUpdatedAt || 0)
+            };
+          }
+          return null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      async function pushRealtimeStructureCloud() {
+        try {
+          const key = getStructureBucketKey();
+          const res = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(key)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              structureUpdatedAt: Number(appState.db.structureUpdatedAt || Date.now()),
+              courses: appState.db.courses || []
+            })
+          });
+          return res.ok;
+        } catch (e) {
+          return false;
+        }
+      }
+
       async function fetchRealtimeAttendanceCloud() {
         try {
           const bucketKey = getAttendanceBucketKey();
@@ -502,6 +603,9 @@
       }
 
       async function pullFromCloud(silent = true, skipRender = false) {
+        if (silent && Date.now() - appState.lastLocalMutationAt < 5000) {
+          return false;
+        }
         await syncRealtimeAttendanceCloud(false);
         const cfg = getCloudConfig();
         const gistId = await resolveSharedGistId(cfg);
@@ -512,22 +616,26 @@
           return false;
         }
         try {
-          const parsed = await fetchRemoteDatabase(cfg, gistId);
-          if (parsed) {
-            parsed.attendance = mergeCollectionsById(
-              parsed.attendance,
-              appState.db.attendance,
-              a => `${a.courseId}|${a.date}|${a.studentId}`
-            );
+          const [parsed, liveStruct] = await Promise.all([
+            fetchRemoteDatabase(cfg, gistId),
+            fetchRealtimeStructureCloud()
+          ]);
+          if (parsed || liveStruct) {
+            const baseDb = parsed ? parsed : JSON.parse(JSON.stringify(appState.db));
+            if (liveStruct && liveStruct.structureUpdatedAt >= Number(baseDb.structureUpdatedAt || 0)) {
+              baseDb.courses = liveStruct.courses;
+              baseDb.structureUpdatedAt = liveStruct.structureUpdatedAt;
+            }
+            const mergedDb = mergeDatabases(baseDb, appState.db, false);
             const prevJson = JSON.stringify(appState.db);
-            const nextJson = JSON.stringify(parsed);
-            appState.lastSyncTime = new Date().toTimeString().slice(0, 8);
+            const nextJson = JSON.stringify(mergedDb);
+            appState.lastSyncTime = getSonoraTimeHHMMSS();
             if (prevJson === nextJson) {
               if (!silent) showToast('La plataforma ya está al día', 'info');
               updateRealtimeIndicator();
               return false;
             }
-            appState.db = parsed;
+            appState.db = mergedDb;
             try {
               localStorage.setItem(STORAGE_KEY, nextJson);
             } catch (e) {}
@@ -556,13 +664,18 @@
       function pushToCloud(silent = true, mergeBeforePush = true) {
         syncLockPromise = syncLockPromise
           .then(async () => {
-            const attLiveOk = await syncRealtimeAttendanceCloud(true);
-            const cfg = getCloudConfig();
-            if (!cfg.token) {
-              return attLiveOk ? { ok: true } : { ok: false, error: 'Sin conexión a la nube en tiempo real' };
-            }
             appState.cloudSyncing = true;
             try {
+              const [attLiveOk, structLiveOk] = await Promise.all([
+                syncRealtimeAttendanceCloud(true),
+                pushRealtimeStructureCloud()
+              ]);
+              const cfg = getCloudConfig();
+              if (!cfg.token) {
+                return attLiveOk || structLiveOk
+                  ? { ok: true }
+                  : { ok: false, error: 'Sin conexión a la nube en tiempo real' };
+              }
               const gistId = await resolveSharedGistId(cfg);
               if (gistId && mergeBeforePush) {
                 try {
@@ -594,8 +707,8 @@
                 body: JSON.stringify(payload)
               });
               if (!res.ok) {
-                if (attLiveOk) {
-                  appState.lastSyncTime = new Date().toTimeString().slice(0, 8);
+                if (attLiveOk || structLiveOk) {
+                  appState.lastSyncTime = getSonoraTimeHHMMSS();
                   updateRealtimeIndicator();
                   refreshOpenAttendanceModalIfVisible();
                   return { ok: true };
@@ -613,13 +726,12 @@
                   saveCloudConfig(cfg.token, data.id);
                 }
               }
-              appState.lastSyncTime = new Date().toTimeString().slice(0, 8);
+              appState.lastSyncTime = getSonoraTimeHHMMSS();
               updateRealtimeIndicator();
               refreshOpenAttendanceModalIfVisible();
               if (!silent) showToast('Datos guardados en la nube de GitHub', 'success');
               return { ok: true };
             } catch (e) {
-              if (attLiveOk) return { ok: true };
               const msg = e && e.message ? e.message : 'Error al sincronizar con GitHub.';
               if (!silent) showToast(msg, 'error');
               return { ok: false, error: msg };
@@ -632,6 +744,8 @@
       }
 
       function saveState() {
+        appState.lastLocalMutationAt = Date.now();
+        appState.db.structureUpdatedAt = Date.now();
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
         } catch (e) {}
@@ -985,7 +1099,7 @@
           password,
           email,
           group,
-          createdAt: new Date().toISOString().slice(0, 10)
+          createdAt: getSonoraISODate()
         };
         appState.db.students.push(newStudent);
         await saveState();
@@ -1079,7 +1193,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                   <span id="realtime-sync-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo Sonora${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}
                   </span>
                   ${
                     isAdmin
@@ -2155,7 +2269,7 @@
               password: 'aB123456.',
               email,
               group,
-              createdAt: new Date().toISOString().slice(0, 10)
+              createdAt: getSonoraISODate()
             });
             saveState();
             closeModal();
@@ -2583,7 +2697,7 @@
               id: uid('ann'),
               title: document.getElementById('na-title').value.trim(),
               body: document.getElementById('na-body').value.trim(),
-              date: new Date().toISOString().slice(0, 10)
+              date: getSonoraISODate()
             });
             saveState();
             closeModal();
@@ -2795,7 +2909,7 @@
             e.preventDefault();
             const content = document.getElementById('sub-content').value.trim();
             const link = document.getElementById('sub-link').value.trim();
-            const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+            const now = getSonoraDateTime();
             if (existing) {
               existing.content = content;
               existing.link = link;
@@ -2861,11 +2975,9 @@
 
       // ==================== ASISTENCIA CON CÓDIGO QR EN TIEMPO REAL ====================
       function getTodayFormatted() {
-        const now = new Date();
-        const dd = String(now.getDate()).padStart(2, '0');
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        const yy = String(now.getFullYear()).slice(-2);
-        return `${dd}.${mm}.${yy}`;
+        const p = getSonoraParts(new Date());
+        const yy = String(p.year).slice(-2);
+        return `${p.day}.${p.month}.${yy}`;
       }
 
       function openSelectCourseForAttendanceModal(courses) {
@@ -3027,7 +3139,7 @@
             );
             let syncPromise = Promise.resolve({ ok: true });
             if (!already) {
-              const nowTime = new Date().toTimeString().slice(0, 5);
+              const nowTime = getSonoraTimeHHMM();
               appState.db.attendance.push({
                 id: uid('att'),
                 courseId: scannedCourseId,
