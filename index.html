@@ -59,7 +59,8 @@
 
       const STORAGE_KEY = 'puma_steam_lms_v1';
       const CLOUD_CONFIG_KEY = 'puma_steam_cloud_cfg_v1';
-      // Si publicas en GitHub Pages y creas un Gist, puedes pegar aquí su ID para que todos los dispositivos carguen automáticamente:
+      // Token de GitHub (con permiso gist) y Gist ID opcional para carga pública:
+      const DEFAULT_GITHUB_TOKEN = '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';
       const DEFAULT_PUBLIC_GIST_ID = '';
       const ADMIN_USER = 'mtrofrancisco';
       const ADMIN_PASS = '37rdo2910D';
@@ -233,12 +234,12 @@
       }
 
       function getCloudConfig() {
-        let cfg = { token: '', gistId: DEFAULT_PUBLIC_GIST_ID };
+        let cfg = { token: DEFAULT_GITHUB_TOKEN, gistId: DEFAULT_PUBLIC_GIST_ID };
         try {
           const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
           if (raw) {
             const parsed = JSON.parse(raw);
-            cfg.token = parsed.token || '';
+            cfg.token = parsed.token || DEFAULT_GITHUB_TOKEN;
             cfg.gistId = parsed.gistId || DEFAULT_PUBLIC_GIST_ID;
           }
         } catch (e) {}
