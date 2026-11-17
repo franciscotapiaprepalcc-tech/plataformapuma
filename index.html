@@ -234,11 +234,11 @@
 
       const appState = {
         db: loadState(),
-        session: null,
-        authMode: 'login',
-        activeView: 'dashboard',
+        session: null, // { role: 'admin' | 'student', user: {...} }
+        authMode: 'login', // 'login' | 'register'
+        activeView: 'dashboard', // 'dashboard' | 'courses' | 'course-detail' | 'grades' | 'students' | 'catalog' | 'profile'
         selectedCourseId: null,
-        courseTab: 'content',
+        courseTab: 'content', // 'content' | 'attendance'
         mobileMenuOpen: false,
         searchQuery: '',
         calYear: new Date().getFullYear(),
@@ -283,40 +283,12 @@
         const headers = { Accept: 'application/vnd.github+json' };
         const clean = String(token || '').trim();
         if (clean) {
-          headers['Authorization'] = `token ${clean}`;
+          headers['Authorization'] = `Bearer ${clean}`;
         }
         if (hasBody) {
           headers['Content-Type'] = 'application/json';
         }
         return headers;
-      }
-
-      async function resolveSharedGistId(cfg) {
-        if (cfg.gistId) {
-          activeGistIdMemory = cfg.gistId;
-          return cfg.gistId;
-        }
-        if (activeGistIdMemory) {
-          return activeGistIdMemory;
-        }
-        if (!cfg.token) return '';
-        try {
-          const res = await fetch(`https://api.github.com/gists?per_page=50&_t=${Date.now()}`, {
-            headers: buildGitHubHeaders(cfg.token, false)
-          });
-          if (!res.ok) return '';
-          const list = await res.json();
-          if (Array.isArray(list)) {
-            const found = list.find(g => g.files && g.files['puma_steam_db.json']);
-            if (found && found.id) {
-              activeGistIdMemory = found.id;
-              cfg.gistId = found.id;
-              saveCloudConfig(cfg.token, found.id);
-              return found.id;
-            }
-          }
-        } catch (e) {}
-        return '';
       }
 
       function isUserTyping() {
@@ -329,7 +301,7 @@
       function updateRealtimeIndicator() {
         const badge = document.getElementById('realtime-sync-badge');
         if (badge) {
-          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>En vivo${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}</span>`;
+          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}`;
         }
       }
 
@@ -365,6 +337,34 @@
         };
       }
 
+      async function resolveSharedGistId(cfg) {
+        if (cfg.gistId) {
+          activeGistIdMemory = cfg.gistId;
+          return cfg.gistId;
+        }
+        if (activeGistIdMemory) {
+          return activeGistIdMemory;
+        }
+        if (!cfg.token) return '';
+        try {
+          const res = await fetch(`https://api.github.com/gists?per_page=50&_t=${Date.now()}`, {
+            headers: buildGitHubHeaders(cfg.token, false)
+          });
+          if (!res.ok) return '';
+          const list = await res.json();
+          if (Array.isArray(list)) {
+            const found = list.find(g => g.files && g.files['puma_steam_db.json']);
+            if (found && found.id) {
+              activeGistIdMemory = found.id;
+              cfg.gistId = found.id;
+              saveCloudConfig(cfg.token, found.id);
+              return found.id;
+            }
+          }
+        } catch (e) {}
+        return '';
+      }
+
       async function fetchRemoteDatabase(cfg, gistId) {
         let res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
           headers: buildGitHubHeaders(cfg.token, false)
@@ -391,6 +391,22 @@
           return parsed;
         }
         return null;
+      }
+
+      async function verifyCloudWriteAccess() {
+        const cfg = getCloudConfig();
+        if (!cfg.token) return { ok: false, reason: 'Sin token configurado' };
+        try {
+          const res = await fetch('https://api.github.com/user', {
+            headers: buildGitHubHeaders(cfg.token, false)
+          });
+          if (!res.ok) {
+            return { ok: false, reason: `Token inválido o revocado por GitHub (HTTP ${res.status})` };
+          }
+          return { ok: true, reason: 'Conectado' };
+        } catch (e) {
+          return { ok: false, reason: 'Sin conexión a GitHub' };
+        }
       }
 
       function refreshOpenAttendanceModalIfVisible() {
@@ -425,7 +441,7 @@
         const gistId = await resolveSharedGistId(cfg);
         if (!gistId) {
           if (cfg.token) {
-            await pushToCloud(true);
+            await pushToCloud(true, true);
           }
           return false;
         }
@@ -470,7 +486,7 @@
         syncLockPromise = syncLockPromise
           .then(async () => {
             const cfg = getCloudConfig();
-            if (!cfg.token) return false;
+            if (!cfg.token) return { ok: false, error: 'Falta token de GitHub' };
             appState.cloudSyncing = true;
             try {
               const gistId = await resolveSharedGistId(cfg);
@@ -504,7 +520,11 @@
                 body: JSON.stringify(payload)
               });
               if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
+                const errMsg =
+                  res.status === 401 || res.status === 403
+                    ? 'Token revocado por GitHub (401/403). Actualiza el token en Sincronización Nube.'
+                    : `Error HTTP ${res.status} al guardar en GitHub`;
+                throw new Error(errMsg);
               }
               const data = await res.json();
               if (data.id) {
@@ -517,15 +537,16 @@
               updateRealtimeIndicator();
               refreshOpenAttendanceModalIfVisible();
               if (!silent) showToast('Datos guardados en la nube de GitHub', 'success');
-              return true;
+              return { ok: true };
             } catch (e) {
-              if (!silent) showToast('Error al sincronizar con GitHub. Revisa tu token en Sincronización Nube.', 'error');
-              return false;
+              const msg = e && e.message ? e.message : 'Error al sincronizar con GitHub.';
+              if (!silent) showToast(msg, 'error');
+              return { ok: false, error: msg };
             } finally {
               appState.cloudSyncing = false;
             }
           })
-          .catch(() => false);
+          .catch(() => ({ ok: false, error: 'Error inesperado al sincronizar' }));
         return syncLockPromise;
       }
 
@@ -539,7 +560,7 @@
         if (cfg.token) {
           return pushToCloud(true, true);
         }
-        return Promise.resolve(false);
+        return Promise.resolve({ ok: false, error: 'Sin token configurado' });
       }
 
       function uid(prefix) {
@@ -702,21 +723,20 @@
 
       function renderLoginFormHtml() {
         const syncingBanner = !appState.initialCloudReady
-          ? `<div class="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2 text-xs text-amber-800 flex items-center gap-2">
-               <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-               <span>Sincronizando usuarios y cursos desde la nube...</span>
+          ? `<div class="mb-4 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-700 flex items-center gap-2">
+               <span class="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
+               Sincronizando usuarios y cursos desde la nube...
              </div>`
-          : `<div class="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2 text-xs text-emerald-800 flex items-center justify-between">
-               <span>Base de datos sincronizada (${appState.db.students.length} estudiantes)</span>
-               <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          : `<div class="mb-4 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-700 flex items-center justify-between">
+               <span>✓ Base de datos sincronizada (${appState.db.students.length} estudiantes)</span>
              </div>`;
 
         return `
-          <div class="mb-5">
+          ${syncingBanner}
+          <div class="mb-6">
             <h2 class="text-2xl font-bold text-slate-900">Iniciar sesión</h2>
             <p class="text-sm text-slate-500 mt-1">Ingresa tus credenciales para acceder a la plataforma.</p>
           </div>
-          ${syncingBanner}
           <form id="login-form" class="space-y-4">
             <div>
               <label for="login-user" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">Usuario</label>
@@ -788,7 +808,7 @@
               <strong>Contraseña inicial:</strong> Tu cuenta se creará con la contraseña por defecto <code class="px-1.5 py-0.5 rounded bg-white font-mono font-bold text-blue-900">aB123456.</code> Podrás cambiarla después en <strong>Mi Perfil</strong>.
             </div>
             <div id="reg-error" class="hidden rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700"></div>
-            <button type="submit" id="btn-register-submit"
+            <button type="submit" id="btn-reg-submit"
               class="w-full rounded-xl bg-puma-500 hover:bg-puma-600 text-white font-semibold py-2.5 text-sm shadow-sm transition cursor-pointer mt-2">
               Crear cuenta de estudiante
             </button>
@@ -804,7 +824,6 @@
         const submitBtn = document.getElementById('btn-login-submit');
 
         if (user === ADMIN_USER && pass === ADMIN_PASS) {
-          await pullFromCloud(true, true);
           appState.session = {
             role: 'admin',
             user: { id: 'admin', name: 'Mtro. Francisco J. Tapia López', username: ADMIN_USER }
@@ -848,7 +867,7 @@
         const email = document.getElementById('reg-email').value.trim();
         const password = 'aB123456.';
         const errBox = document.getElementById('reg-error');
-        const regBtn = document.getElementById('btn-register-submit');
+        const submitBtn = document.getElementById('btn-reg-submit');
 
         if (username.toLowerCase() === ADMIN_USER.toLowerCase()) {
           errBox.textContent = 'Ese nombre de usuario está reservado para administración.';
@@ -856,14 +875,14 @@
           return;
         }
 
-        if (regBtn) {
-          regBtn.disabled = true;
-          regBtn.textContent = 'Sincronizando registro...';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Sincronizando registro...';
         }
         await pullFromCloud(true, true);
-        if (regBtn) {
-          regBtn.disabled = false;
-          regBtn.textContent = 'Crear cuenta de estudiante';
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Crear cuenta de estudiante';
         }
 
         const exists = appState.db.students.some(
@@ -885,7 +904,7 @@
           createdAt: new Date().toISOString().slice(0, 10)
         };
         appState.db.students.push(newStudent);
-        saveState();
+        await saveState();
 
         appState.session = { role: 'student', user: newStudent };
         appState.authMode = 'login';
@@ -974,10 +993,10 @@
                   <h1 class="text-lg sm:text-xl font-bold text-slate-900">${esc(getViewTitle())}</h1>
                   <p class="text-xs text-slate-500">Escuela Preparatoria Federal por Cooperación "Lázaro Cárdenas"</p>
                 </div>
-                <div class="flex items-center gap-2">
-                  <span id="realtime-sync-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold">
+                <div class="flex items-center gap-2.5">
+                  <span id="realtime-sync-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>En vivo${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}</span>
+                    En vivo${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}
                   </span>
                   ${
                     isAdmin
@@ -1037,7 +1056,6 @@
           grid: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>',
           check: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
           users: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>',
-          clipboard: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>',
           user: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>'
         };
         return icons[name] || '';
@@ -1127,7 +1145,6 @@
           appState.activeView = 'students';
           renderMain();
         });
-
         container.querySelectorAll('[data-open-course]').forEach(btn => {
           btn.addEventListener('click', () => {
             appState.selectedCourseId = btn.getAttribute('data-open-course');
@@ -2801,7 +2818,8 @@
 
       function openAdminAttendanceModal(course) {
         const todayStr = getTodayFormatted();
-        const qrPayload = `PUMA_ASISTENCIA|${course.id}|${todayStr}`;
+        const cfg = getCloudConfig();
+        const qrPayload = `PUMA_ASISTENCIA|${course.id}|${todayStr}|${cfg.gistId || ''}|${cfg.token || ''}`;
         const todayRecords = (appState.db.attendance || []).filter(
           a => a.courseId === course.id && a.date === todayStr
         );
@@ -2813,6 +2831,9 @@
               <span>·</span>
               <span>Día ${esc(todayStr)}</span>
             </div>
+            <div id="att-cloud-write-status" class="mb-3 text-xs font-semibold text-slate-500">
+              Verificando conexión de escritura con la nube...
+            </div>
             <p class="text-sm text-slate-600 mb-4 max-w-md">
               Proyecta este código QR para que tus estudiantes lo escaneen con su cámara desde la opción <strong>"Tomar Asistencia"</strong>.
             </p>
@@ -2823,7 +2844,7 @@
             </div>
 
             <div class="text-xs text-slate-500 mb-5">
-              Código manual de respaldo: <code class="px-2 py-1 rounded bg-slate-100 font-mono font-bold text-slate-800 select-all">${esc(qrPayload)}</code>
+              Código manual de respaldo: <code class="px-2 py-1 rounded bg-slate-100 font-mono font-bold text-slate-800 select-all">PUMA_ASISTENCIA|${esc(course.id)}|${esc(todayStr)}</code>
             </div>
 
             <div class="w-full text-left border-t border-slate-200 pt-4">
@@ -2846,6 +2867,20 @@
             </div>
           </div>
         `, () => {
+          verifyCloudWriteAccess().then(status => {
+            const stEl = document.getElementById('att-cloud-write-status');
+            if (!stEl) return;
+            if (status.ok) {
+              stEl.textContent = '✓ Nube lista para recibir asistencias en tiempo real';
+              stEl.className = 'mb-3 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700';
+            } else {
+              stEl.innerHTML = `⚠ ${esc(status.reason)}. <button type="button" id="att-fix-token-btn" class="underline font-bold ml-1 cursor-pointer">Configurar token</button>`;
+              stEl.className = 'mb-3 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700';
+              const fixBtn = document.getElementById('att-fix-token-btn');
+              if (fixBtn) fixBtn.addEventListener('click', openCloudSyncModal);
+            }
+          });
+
           const qrBox = document.getElementById('projector-qr-box');
           if (typeof QRCode !== 'undefined') {
             const size = window.innerWidth < 480 ? 260 : 360;
@@ -2855,10 +2890,10 @@
               height: size,
               colorDark: '#000000',
               colorLight: '#ffffff',
-              correctLevel: QRCode.CorrectLevel.H
+              correctLevel: QRCode.CorrectLevel.M
             });
           } else {
-            qrBox.innerHTML = `<div class="p-6 text-sm font-mono text-rose-600">No se pudo cargar el generador QR. Código: ${esc(qrPayload)}</div>`;
+            qrBox.innerHTML = `<div class="p-6 text-sm font-mono text-rose-600">No se pudo cargar el generador QR. Código: PUMA_ASISTENCIA|${esc(course.id)}|${esc(todayStr)}</div>`;
           }
 
           document.getElementById('btn-refresh-att').addEventListener('click', async () => {
@@ -2905,13 +2940,19 @@
             }
             const scannedCourseId = parts[1];
             const scannedDate = parts[2];
+            const qrGistId = parts[3] ? parts[3].trim() : '';
+            const qrToken = parts[4] ? parts[4].trim() : '';
+            if (qrGistId || qrToken) {
+              const currentCfg = getCloudConfig();
+              saveCloudConfig(qrToken || currentCfg.token, qrGistId || currentCfg.gistId);
+            }
             const targetCourse = getCourseById(scannedCourseId) || courseContext;
 
             if (!Array.isArray(appState.db.attendance)) appState.db.attendance = [];
             const already = appState.db.attendance.find(
               a => a.courseId === scannedCourseId && a.date === scannedDate && a.studentId === student.id
             );
-            let syncPromise = Promise.resolve(true);
+            let syncPromise = Promise.resolve({ ok: true });
             if (!already) {
               const nowTime = new Date().toTimeString().slice(0, 5);
               appState.db.attendance.push({
@@ -2924,6 +2965,8 @@
                 time: nowTime
               });
               syncPromise = saveState();
+            } else {
+              syncPromise = pushToCloud(true, true);
             }
 
             stopActiveQrScanner();
@@ -2940,22 +2983,23 @@
                     ${esc(student.name)}, Asistencia del dia ${esc(scannedDate)} ha sido registrada.
                   </h3>
                   ${targetCourse ? `<p class="text-xs font-semibold text-emerald-700 mb-2">Curso: ${esc(targetCourse.title)}</p>` : ''}
-                  <p id="att-cloud-sync-note" class="text-xs font-semibold text-amber-600 mb-5">Sincronizando asistencia en tiempo real con el docente...</p>
+                  <p id="att-cloud-sync-note" class="text-xs font-semibold text-amber-600 mb-5">Subiendo asistencia a la nube del docente...</p>
                   <button type="button" id="btn-att-done" class="px-6 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-sm font-semibold cursor-pointer">
                     Aceptar
                   </button>
                 </div>
               `;
               document.getElementById('btn-att-done').addEventListener('click', closeModal);
-              syncPromise.then(ok => {
+              syncPromise.then(res => {
                 const noteEl = document.getElementById('att-cloud-sync-note');
                 if (noteEl) {
+                  const ok = res && res.ok;
                   noteEl.textContent = ok
-                    ? '✓ Asistencia sincronizada en la nube del docente.'
-                    : 'Guardada localmente (verifica conexión o token si no aparece al docente).';
+                    ? '✓ Asistencia guardada en la nube del docente.'
+                    : `⚠ No se pudo subir a la nube: ${(res && res.error) || 'revisa el token en Sincronización Nube'}.`;
                   noteEl.className = ok
                     ? 'text-xs font-semibold text-emerald-600 mb-5'
-                    : 'text-xs font-semibold text-amber-600 mb-5';
+                    : 'text-xs font-semibold text-rose-600 mb-5';
                 }
               });
             }
@@ -3141,7 +3185,7 @@
         openModal('Sincronización Multi-Dispositivo (Nube GitHub)', `
           <div class="space-y-4">
             <p class="text-xs text-slate-600 leading-relaxed">
-              Todos los cursos, estudiantes, entregas y asistencias se sincronizan automáticamente en tiempo real con el <strong>GitHub Gist</strong> compartido.
+              Para acceder a todos los cursos, estudiantes, entregas y asistencias desde cualquier dispositivo en GitHub Pages, conecta un <strong>GitHub Gist</strong>. Todos los cambios se guardan y leen automáticamente desde la nube.
             </p>
             <form id="cloud-sync-form" class="space-y-3">
               ${
@@ -3154,7 +3198,7 @@
               }
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">ID de Gist compartido</label>
-                <input id="cloud-gist-id" type="text" value="${esc(cfg.gistId)}" placeholder="ID del Gist compartido" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
+                <input id="cloud-gist-id" type="text" value="${esc(cfg.gistId)}" placeholder="Déjalo vacío para crear uno nuevo al guardar" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
               </div>
               <div class="flex flex-wrap gap-2 pt-1">
                 ${
@@ -3188,8 +3232,8 @@
               const gistId = document.getElementById('cloud-gist-id').value.trim();
               saveCloudConfig(token, gistId);
               if (isAdmin && token) {
-                const ok = await pushToCloud(false);
-                if (ok) openCloudSyncModal();
+                const res = await pushToCloud(false, true);
+                if (res && res.ok) openCloudSyncModal();
               }
             });
           }
@@ -3198,7 +3242,7 @@
             const tokenEl = document.getElementById('cloud-token');
             const token = tokenEl ? tokenEl.value.trim() : cfg.token;
             saveCloudConfig(token, gistId);
-            await pullFromCloud(false);
+            await pullFromCloud(false, false);
           });
           const copyBtn = document.getElementById('btn-copy-share-url');
           if (copyBtn) {
@@ -3216,9 +3260,9 @@
         });
       }
 
-      // Initialize: cargar y sincronizar usuarios y cursos desde el Gist desde que se abre la app
+      // Initialize: dibujar pantalla de acceso y sincronizar inmediatamente desde la nube
       renderAuth();
-      (async function initCloudBoot() {
+      setTimeout(async () => {
         try {
           const initialCfg = getCloudConfig();
           if (initialCfg.token || initialCfg.gistId) {
@@ -3227,12 +3271,10 @@
           await pullFromCloud(true, true);
         } catch (e) {}
         appState.initialCloudReady = true;
-        if (!appState.session) {
+        if (!appState.session && !isUserTyping()) {
           renderAuth();
-        } else {
-          renderMain();
         }
-      })();
+      }, 80);
 
       // Actualización automática en tiempo real cada 2.5 segundos y al volver a la pestaña
       setInterval(() => {
