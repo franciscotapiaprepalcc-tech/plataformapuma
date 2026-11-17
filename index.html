@@ -59,7 +59,6 @@
 
       const STORAGE_KEY = 'puma_steam_lms_v1';
       const CLOUD_CONFIG_KEY = 'puma_steam_cloud_cfg_v1';
-      // Token de GitHub (con permiso gist) y Gist ID opcional para carga pública:
       const DEFAULT_GITHUB_TOKEN = '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';
       const DEFAULT_PUBLIC_GIST_ID = 'ebb8263d448ac9b21338823ef8d53345';
       const ADMIN_USER = 'mtrofrancisco';
@@ -245,7 +244,8 @@
         calYear: new Date().getFullYear(),
         calMonth: new Date().getMonth(),
         calSelectedDate: new Date().toISOString().slice(0, 10),
-        cloudSyncing: false
+        cloudSyncing: false,
+        initialCloudReady: false
       };
 
       function getCloudConfig() {
@@ -321,7 +321,7 @@
         return '';
       }
 
-      async function pullFromCloud(silent = true) {
+      async function pullFromCloud(silent = true, skipRender = false) {
         const cfg = getCloudConfig();
         const gistId = await resolveSharedGistId(cfg);
         if (!gistId) {
@@ -331,14 +331,15 @@
           return false;
         }
         try {
-          const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
+          let res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
             headers: buildGitHubHeaders(cfg.token, false)
           });
+          if (res.status === 401 || res.status === 403) {
+            res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
+              headers: { Accept: 'application/vnd.github+json' }
+            });
+          }
           if (!res.ok) {
-            if (res.status === 404) {
-              activeGistIdMemory = '';
-              saveCloudConfig(cfg.token, '');
-            }
             throw new Error(`HTTP ${res.status}`);
           }
           const data = await res.json();
@@ -351,7 +352,9 @@
               appState.db = parsed;
               try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db)); } catch (e) {}
               if (!silent) showToast('Datos sincronizados desde la nube', 'success');
-              if (appState.session) renderMain(); else renderAuth();
+              if (!skipRender) {
+                if (appState.session) renderMain(); else renderAuth();
+              }
               return true;
             }
           }
@@ -579,7 +582,18 @@
       }
 
       function renderLoginFormHtml() {
+        const syncingBanner = !appState.initialCloudReady
+          ? `<div class="mb-4 rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2 text-xs font-medium text-blue-800 flex items-center gap-2">
+              <span class="inline-block w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
+              Sincronizando usuarios y cursos desde la nube...
+            </div>`
+          : `<div class="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2 text-xs font-medium text-emerald-800 flex items-center justify-between">
+              <span>Base de datos sincronizada</span>
+              <span class="font-bold">${appState.db.students.length} estudiantes</span>
+            </div>`;
+
         return `
+          ${syncingBanner}
           <div class="mb-6">
             <h2 class="text-2xl font-bold text-slate-900">Iniciar sesión</h2>
             <p class="text-sm text-slate-500 mt-1">Ingresa tus credenciales para acceder a la plataforma.</p>
@@ -596,7 +610,7 @@
                 class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-puma-500 focus:border-puma-500 transition" />
             </div>
             <div id="login-error" class="hidden rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700"></div>
-            <button type="submit"
+            <button type="submit" id="btn-login-submit"
               class="w-full rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-semibold py-2.5 text-sm shadow-sm transition cursor-pointer">
               Entrar a la plataforma
             </button>
@@ -663,13 +677,20 @@
         `;
       }
 
-      function handleLoginSubmit(e) {
+      async function handleLoginSubmit(e) {
         e.preventDefault();
         const user = document.getElementById('login-user').value.trim();
         const pass = document.getElementById('login-pass').value;
         const errBox = document.getElementById('login-error');
+        const submitBtn = document.getElementById('btn-login-submit');
 
         if (user === ADMIN_USER && pass === ADMIN_PASS) {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Sincronizando...';
+          }
+          await pullFromCloud(true, true);
+          appState.initialCloudReady = true;
           appState.session = {
             role: 'admin',
             user: { id: 'admin', name: 'Mtro. Francisco J. Tapia López', username: ADMIN_USER }
@@ -678,6 +699,17 @@
           showToast('Bienvenido, Mtro. Francisco', 'success');
           renderMain();
           return;
+        }
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Verificando usuario...';
+        }
+        await pullFromCloud(true, true);
+        appState.initialCloudReady = true;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Entrar a la plataforma';
         }
 
         const student = appState.db.students.find(
@@ -695,7 +727,7 @@
         errBox.classList.remove('hidden');
       }
 
-      function handleRegisterSubmit(e) {
+      async function handleRegisterSubmit(e) {
         e.preventDefault();
         const name = document.getElementById('reg-name').value.trim();
         const username = document.getElementById('reg-user').value.trim();
@@ -709,6 +741,10 @@
           errBox.classList.remove('hidden');
           return;
         }
+
+        await pullFromCloud(true, true);
+        appState.initialCloudReady = true;
+
         const exists = appState.db.students.some(
           s => s.username.toLowerCase() === username.toLowerCase()
         );
@@ -3036,17 +3072,23 @@
         });
       }
 
-      // Initialize
+      // Initialize: cargar y sincronizar usuarios y cursos desde el Gist desde que se abre la app
       renderAuth();
-      setTimeout(() => {
+      (async function initCloudBoot() {
         try {
           const initialCfg = getCloudConfig();
-          if (initialCfg.token) {
+          if (initialCfg.token || initialCfg.gistId) {
             saveCloudConfig(initialCfg.token, initialCfg.gistId);
           }
-          pullFromCloud(true);
+          await pullFromCloud(true, true);
         } catch (e) {}
-      }, 150);
+        appState.initialCloudReady = true;
+        if (!appState.session) {
+          renderAuth();
+        } else {
+          renderMain();
+        }
+      })();
     })();
   </script>
 </body>
