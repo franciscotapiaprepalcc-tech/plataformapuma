@@ -58,6 +58,9 @@
       'use strict';
 
       const STORAGE_KEY = 'puma_steam_lms_v1';
+      const CLOUD_CONFIG_KEY = 'puma_steam_cloud_cfg_v1';
+      // Si publicas en GitHub Pages y creas un Gist, puedes pegar aquí su ID para que todos los dispositivos carguen automáticamente:
+      const DEFAULT_PUBLIC_GIST_ID = '';
       const ADMIN_USER = 'mtrofrancisco';
       const ADMIN_PASS = '37rdo2910D';
 
@@ -229,11 +232,109 @@
         return JSON.parse(JSON.stringify(DEFAULT_DATA));
       }
 
+      function getCloudConfig() {
+        let cfg = { token: '', gistId: DEFAULT_PUBLIC_GIST_ID };
+        try {
+          const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            cfg.token = parsed.token || '';
+            cfg.gistId = parsed.gistId || DEFAULT_PUBLIC_GIST_ID;
+          }
+        } catch (e) {}
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlGist = urlParams.get('gist');
+          if (urlGist) cfg.gistId = urlGist.trim();
+        } catch (e) {}
+        return cfg;
+      }
+
+      function saveCloudConfig(token, gistId) {
+        try {
+          localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify({ token: token.trim(), gistId: gistId.trim() }));
+        } catch (e) {}
+      }
+
+      async function pullFromCloud(silent = true) {
+        const cfg = getCloudConfig();
+        if (!cfg.gistId) return false;
+        try {
+          const headers = { 'Accept': 'application/vnd.github+json' };
+          if (cfg.token) headers['Authorization'] = `Bearer ${cfg.token}`;
+          const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(cfg.gistId)}`, { headers });
+          if (!res.ok) throw new Error('Error al consultar Gist');
+          const data = await res.json();
+          const fileObj = data.files && (data.files['puma_steam_db.json'] || Object.values(data.files)[0]);
+          if (fileObj && fileObj.content) {
+            const parsed = JSON.parse(fileObj.content);
+            if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
+              if (!Array.isArray(parsed.attendance)) parsed.attendance = [];
+              if (!Array.isArray(parsed.submissions)) parsed.submissions = [];
+              appState.db = parsed;
+              try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db)); } catch (e) {}
+              if (!silent) showToast('Datos sincronizados desde la nube', 'success');
+              if (appState.session) renderMain(); else renderAuth();
+              return true;
+            }
+          }
+        } catch (e) {
+          if (!silent) showToast('No se pudo cargar desde la nube. Verifica el ID o conexión.', 'error');
+        }
+        return false;
+      }
+
+      async function pushToCloud(silent = true) {
+        const cfg = getCloudConfig();
+        if (!cfg.token) return false;
+        appState.cloudSyncing = true;
+        try {
+          const payload = {
+            description: 'PLATAFORMA PUMA STEAM - Base de datos sincronizada',
+            public: false,
+            files: {
+              'puma_steam_db.json': {
+                content: JSON.stringify(appState.db, null, 2)
+              }
+            }
+          };
+          const url = cfg.gistId
+            ? `https://api.github.com/gists/${encodeURIComponent(cfg.gistId)}`
+            : 'https://api.github.com/gists';
+          const method = cfg.gistId ? 'PATCH' : 'POST';
+          const res = await fetch(url, {
+            method,
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': `Bearer ${cfg.token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error('Error al guardar en GitHub');
+          const data = await res.json();
+          if (data.id && data.id !== cfg.gistId) {
+            saveCloudConfig(cfg.token, data.id);
+          }
+          if (!silent) showToast('Datos guardados en la nube de GitHub', 'success');
+          return true;
+        } catch (e) {
+          if (!silent) showToast('Error al sincronizar con GitHub. Revisa tu token.', 'error');
+          return false;
+        } finally {
+          appState.cloudSyncing = false;
+        }
+      }
+
       function saveState() {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
         } catch (e) {
           // Ignore storage quota / sandbox restriction
+        }
+        const cfg = getCloudConfig();
+        if (cfg.token && cfg.gistId) {
+          pushToCloud(true);
         }
       }
 
@@ -245,7 +346,11 @@
         selectedCourseId: null,
         courseTab: 'content', // 'content' | 'attendance'
         mobileMenuOpen: false,
-        searchQuery: ''
+        searchQuery: '',
+        calYear: new Date().getFullYear(),
+        calMonth: new Date().getMonth(),
+        calSelectedDate: new Date().toISOString().slice(0, 10),
+        cloudSyncing: false
       };
 
       function uid(prefix) {
@@ -625,6 +730,11 @@
                   <div class="text-xs font-semibold text-white truncate">${esc(user.name)}</div>
                   <div class="text-[11px] text-slate-400 truncate">@${esc(user.username)}${!isAdmin && user.group ? ' · ' + esc(user.group) : ''}</div>
                 </div>
+                <button type="button" id="btn-cloud-sync"
+                  class="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-400/30 text-xs font-semibold text-emerald-200 transition cursor-pointer">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+                  Sincronización Nube
+                </button>
                 <button type="button" id="btn-logout"
                   class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/10 hover:bg-rose-600/80 text-xs font-semibold text-white transition cursor-pointer">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
@@ -658,6 +768,7 @@
           appState.mobileMenuOpen = !appState.mobileMenuOpen;
           renderMain();
         });
+        document.getElementById('btn-cloud-sync').addEventListener('click', openCloudSyncModal);
         document.getElementById('btn-logout').addEventListener('click', () => {
           appState.session = null;
           appState.selectedCourseId = null;
@@ -751,27 +862,7 @@
 
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <div class="flex items-center justify-between mb-4">
-                <h2 class="text-base font-bold text-slate-900">Cursos Recientes</h2>
-                <button type="button" id="dash-go-courses" class="text-xs font-semibold text-puma-600 hover:text-puma-700 cursor-pointer">Ver todos →</button>
-              </div>
-              <div class="space-y-3">
-                ${courses
-                  .map(
-                    c => `
-                  <div class="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-slate-100 hover:border-puma-200 bg-slate-50/60 transition">
-                    <div>
-                      <span class="text-[11px] font-bold uppercase tracking-wider text-puma-600">${esc(c.code)} · ${esc(c.semester)}</span>
-                      <h3 class="text-sm font-bold text-slate-900">${esc(c.title)}</h3>
-                      <p class="text-xs text-slate-500">${c.modules.length} módulos · ${c.enrolledStudentIds.length} estudiantes inscritos</p>
-                    </div>
-                    <button type="button" data-open-course="${c.id}" class="px-3.5 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold cursor-pointer transition">
-                      Administrar
-                    </button>
-                  </div>`
-                  )
-                  .join('')}
-              </div>
+              ${renderAssignmentsCalendarHtml(courses)}
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
@@ -803,10 +894,7 @@
           </div>
         `;
 
-        document.getElementById('dash-go-courses').addEventListener('click', () => {
-          appState.activeView = 'courses';
-          renderMain();
-        });
+        wireAssignmentsCalendarEvents(container);
         document.getElementById('dash-go-students').addEventListener('click', () => {
           appState.activeView = 'students';
           renderMain();
@@ -2802,7 +2890,234 @@
         }, 'max-w-lg');
       }
 
+      // ==================== CALENDARIO DE ENTREGAS ====================
+      function getAssignmentsByDateMap(courses) {
+        const map = {};
+        courses.forEach(c => {
+          (c.modules || []).forEach(m => {
+            (m.assignments || []).forEach(a => {
+              if (!a.dueDate) return;
+              if (!map[a.dueDate]) map[a.dueDate] = [];
+              map[a.dueDate].push({ course: c, module: m, assignment: a });
+            });
+          });
+        });
+        return map;
+      }
+
+      function renderAssignmentsCalendarHtml(courses) {
+        const year = appState.calYear;
+        const month = appState.calMonth;
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const firstDay = new Date(year, month, 1);
+        const startOffset = (firstDay.getDay() + 6) % 7; // Monday = 0
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const dueMap = getAssignmentsByDateMap(courses);
+        const selected = appState.calSelectedDate;
+        const selectedTasks = dueMap[selected] || [];
+
+        const cells = [];
+        for (let i = 0; i < startOffset; i++) {
+          cells.push('<div class="h-12 sm:h-14 rounded-xl bg-slate-50/50"></div>');
+        }
+        for (let d = 1; d <= daysInMonth; d++) {
+          const mm = String(month + 1).padStart(2, '0');
+          const dd = String(d).padStart(2, '0');
+          const iso = `${year}-${mm}-${dd}`;
+          const tasks = dueMap[iso] || [];
+          const isSelected = selected === iso;
+          const hasTasks = tasks.length > 0;
+          cells.push(`
+            <button type="button" data-cal-day="${iso}"
+              class="h-12 sm:h-14 rounded-xl border p-1.5 flex flex-col items-center justify-between transition cursor-pointer ${
+                isSelected
+                  ? 'border-puma-500 bg-puma-50 ring-2 ring-puma-500/30'
+                  : hasTasks
+                    ? 'border-blue-200 bg-blue-50/60 hover:bg-blue-100/60'
+                    : 'border-slate-100 bg-white hover:bg-slate-50'
+              }">
+              <span class="text-xs font-bold ${isSelected ? 'text-puma-700' : 'text-slate-800'}">${d}</span>
+              ${
+                hasTasks
+                  ? `<span class="px-1.5 py-0.5 rounded-full bg-puma-500 text-white text-[10px] font-bold leading-none">${tasks.length}</span>`
+                  : '<span class="h-3"></span>'
+              }
+            </button>
+          `);
+        }
+
+        // Also collect upcoming tasks in current month
+        const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+        const monthTasks = Object.keys(dueMap)
+          .filter(k => k.startsWith(monthPrefix))
+          .sort()
+          .flatMap(k => dueMap[k]);
+
+        return `
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div>
+              <h2 class="text-base font-bold text-slate-900">Calendario de Entregas</h2>
+              <p class="text-xs text-slate-500">Haz clic en un día para ver las actividades programadas.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="cal-prev-month" class="px-2.5 py-1 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer">←</button>
+              <span class="text-sm font-bold text-slate-900 min-w-[130px] text-center">${monthNames[month]} ${year}</span>
+              <button type="button" id="cal-next-month" class="px-2.5 py-1 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer">→</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold uppercase text-slate-400 mb-1.5">
+            <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
+          </div>
+          <div class="grid grid-cols-7 gap-1.5 mb-5">
+            ${cells.join('')}
+          </div>
+
+          <div class="border-t border-slate-200 pt-4">
+            <h3 class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2.5">
+              Actividades para el ${esc(selected)} (${selectedTasks.length})
+            </h3>
+            ${
+              selectedTasks.length === 0
+                ? `<p class="text-xs text-slate-400 mb-3">No hay actividades programadas para esta fecha.${monthTasks.length ? ` Tienes ${monthTasks.length} entrega(s) en ${monthNames[month]}.` : ''}</p>`
+                : `<div class="space-y-2">
+                    ${selectedTasks.map(item => `
+                      <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <div>
+                          <div class="text-[11px] font-bold text-puma-600">${esc(item.course.code)} · ${esc(item.course.title)}</div>
+                          <div class="text-sm font-semibold text-slate-900">${esc(item.assignment.title)}</div>
+                          <div class="text-[11px] text-slate-500">${esc(item.module.title)} · Valor: ${esc(item.assignment.maxPoints)} pts</div>
+                        </div>
+                        <button type="button" data-open-course="${item.course.id}" class="px-3 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold cursor-pointer">
+                          Abrir curso
+                        </button>
+                      </div>
+                    `).join('')}
+                  </div>`
+            }
+          </div>
+        `;
+      }
+
+      function wireAssignmentsCalendarEvents(container) {
+        const prevBtn = document.getElementById('cal-prev-month');
+        const nextBtn = document.getElementById('cal-next-month');
+        if (prevBtn) {
+          prevBtn.addEventListener('click', () => {
+            appState.calMonth -= 1;
+            if (appState.calMonth < 0) {
+              appState.calMonth = 11;
+              appState.calYear -= 1;
+            }
+            renderAdminDashboard();
+          });
+        }
+        if (nextBtn) {
+          nextBtn.addEventListener('click', () => {
+            appState.calMonth += 1;
+            if (appState.calMonth > 11) {
+              appState.calMonth = 0;
+              appState.calYear += 1;
+            }
+            renderAdminDashboard();
+          });
+        }
+        container.querySelectorAll('[data-cal-day]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            appState.calSelectedDate = btn.getAttribute('data-cal-day');
+            renderAdminDashboard();
+          });
+        });
+      }
+
+      // ==================== SINCRONIZACIÓN EN LA NUBE (GITHUB GIST) ====================
+      function openCloudSyncModal() {
+        const cfg = getCloudConfig();
+        const isAdmin = appState.session.role === 'admin';
+        const shareUrl = cfg.gistId
+          ? `${window.location.origin}${window.location.pathname}?gist=${encodeURIComponent(cfg.gistId)}`
+          : '';
+
+        openModal('Sincronización Multi-Dispositivo (Nube GitHub)', `
+          <div class="space-y-4">
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Para acceder a todos los cursos, estudiantes, entregas y asistencias desde cualquier dispositivo en GitHub Pages, conecta un <strong>GitHub Gist</strong>. Todos los cambios se guardan y leen automáticamente desde la nube.
+            </p>
+            <form id="cloud-sync-form" class="space-y-3">
+              ${
+                isAdmin
+                  ? `<div>
+                      <label class="block text-xs font-semibold text-slate-600 mb-1">Token de GitHub (con permiso <code>gist</code>)</label>
+                      <input id="cloud-token" type="password" value="${esc(cfg.token)}" placeholder="ghp_..." class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
+                    </div>`
+                  : ''
+              }
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">ID de Gist compartido</label>
+                <input id="cloud-gist-id" type="text" value="${esc(cfg.gistId)}" placeholder="Déjalo vacío para crear uno nuevo al guardar" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
+              </div>
+              <div class="flex flex-wrap gap-2 pt-1">
+                ${
+                  isAdmin
+                    ? `<button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer">Guardar y Subir a la Nube</button>`
+                    : ''
+                }
+                <button type="button" id="btn-cloud-pull" class="px-4 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold cursor-pointer">Descargar de la Nube</button>
+              </div>
+            </form>
+
+            ${
+              shareUrl
+                ? `<div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                    <div class="text-[11px] font-bold text-slate-700">Enlace directo para cualquier dispositivo:</div>
+                    <div class="flex items-center gap-2">
+                      <input id="cloud-share-url" type="text" readonly value="${esc(shareUrl)}" class="flex-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-mono text-slate-700" />
+                      <button type="button" id="btn-copy-share-url" class="px-3 py-1.5 rounded-lg bg-puma-500 text-white text-xs font-semibold cursor-pointer">Copiar</button>
+                    </div>
+                  </div>`
+                : ''
+            }
+          </div>
+        `, () => {
+          const form = document.getElementById('cloud-sync-form');
+          if (form) {
+            form.addEventListener('submit', async e => {
+              e.preventDefault();
+              const tokenEl = document.getElementById('cloud-token');
+              const token = tokenEl ? tokenEl.value.trim() : cfg.token;
+              const gistId = document.getElementById('cloud-gist-id').value.trim();
+              saveCloudConfig(token, gistId);
+              if (isAdmin && token) {
+                const ok = await pushToCloud(false);
+                if (ok) openCloudSyncModal();
+              }
+            });
+          }
+          document.getElementById('btn-cloud-pull').addEventListener('click', async () => {
+            const gistId = document.getElementById('cloud-gist-id').value.trim();
+            const tokenEl = document.getElementById('cloud-token');
+            const token = tokenEl ? tokenEl.value.trim() : cfg.token;
+            saveCloudConfig(token, gistId);
+            await pullFromCloud(false);
+          });
+          const copyBtn = document.getElementById('btn-copy-share-url');
+          if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+              const inp = document.getElementById('cloud-share-url');
+              inp.select();
+              try {
+                navigator.clipboard.writeText(inp.value);
+              } catch (e) {
+                document.execCommand('copy');
+              }
+              showToast('Enlace copiado al portapapeles', 'success');
+            });
+          }
+        });
+      }
+
       // Initialize
+      pullFromCloud(true);
       renderAuth();
     })();
   </script>
