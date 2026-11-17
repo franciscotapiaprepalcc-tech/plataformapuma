@@ -44,28 +44,30 @@
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
-  <!-- Toast Container -->
+  <!-- Contenedor de notificaciones Toast -->
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
 
-  <!-- Modal Container -->
+  <!-- Contenedor de Modales -->
   <div id="modal-root" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto"></div>
 
-  <!-- App Root -->
+  <!-- Raíz de la Aplicación -->
   <div id="app" class="flex-1 flex flex-col"></div>
 
   <script>
     (function () {
       'use strict';
 
-      const STORAGE_KEY = 'puma_steam_lms_v1';
-      const CLOUD_CONFIG_KEY = 'puma_steam_cloud_cfg_v1';
-      const REALTIME_ATT_API = 'https://kvdb.io/A9xP7mK2vL8qR4wN6zT1yB';
+      // ==================== CONSTANTES Y CONFIGURACIÓN ====================
+      const STORAGE_KEY = 'puma_steam_lms_v2';
+      const CLOUD_CONFIG_KEY = 'puma_steam_cloud_cfg_v2';
+      const REALTIME_KV_BASE = 'https://kvdb.io/A9xP7mK2vL8qR4wN6zT1yB';
       const DEFAULT_GITHUB_TOKEN = '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';
       const DEFAULT_PUBLIC_GIST_ID = 'ebb8263d448ac9b21338823ef8d53345';
       const SONORA_TIMEZONE = 'America/Hermosillo';
       const ADMIN_USER = 'mtrofrancisco';
       const ADMIN_PASS = '37rdo2910D';
 
+      // ==================== ZONA HORARIA HERMOSILLO, SONORA ====================
       function getSonoraParts(dateObj = new Date()) {
         const fmt = new Intl.DateTimeFormat('en-CA', {
           timeZone: SONORA_TIMEZONE,
@@ -110,7 +112,20 @@
         return { year: Number(p.year), month: Number(p.month) - 1 };
       }
 
+      function getTodayFormatted() {
+        const p = getSonoraParts(new Date());
+        const yy = String(p.year).slice(-2);
+        return `${p.day}.${p.month}.${yy}`;
+      }
+
+      // ==================== DATOS INICIALES ====================
       const DEFAULT_DATA = {
+        meta: {
+          structureUpdatedAt: 1,
+          deletedAttendance: {},
+          deletedSubmissions: {},
+          deletedStudents: {}
+        },
         courses: [
           {
             id: 'c-cultura-digital',
@@ -187,7 +202,7 @@
             modules: [
               {
                 id: 'm-3',
-                title: 'Bloque 1: Estática y Momento de Torsión',
+                title: 'Secuencia 1: Estática y Momento de Torsión',
                 resources: [
                   { id: 'r-4', type: 'Formulario', title: 'Fórmulas de Torque (τ = F · d · sen θ)', detail: 'Incluye convención de signos y ejemplos resueltos.' }
                 ],
@@ -217,7 +232,7 @@
             modules: [
               {
                 id: 'm-4',
-                title: 'Módulo 1: Composición Fotográfica',
+                title: 'Secuencia 1: Composición Fotográfica',
                 resources: [
                   { id: 'r-5', type: 'Guía', title: 'Regla de los Tercios y Larga Exposición', detail: 'Parámetros básicos de apertura, velocidad de obturación e ISO.' }
                 ],
@@ -242,7 +257,8 @@
             password: '123',
             email: 'alumno1@prepamarista.edu.mx',
             group: '1°A',
-            createdAt: '2026-11-01'
+            createdAt: '2026-11-01',
+            updatedAt: 1
           }
         ],
         submissions: [
@@ -254,6 +270,7 @@
             content: 'Comparto mi mapa de huella digital con las 5 medidas de mitigación solicitadas.',
             link: 'https://drive.google.com/ejemplo-entrega',
             submittedAt: '2026-11-15 18:30',
+            updatedAt: 1,
             grade: 95,
             feedback: 'Excelente análisis y buena presentación visual.'
           }
@@ -261,22 +278,34 @@
         attendance: []
       };
 
+      function normalizeDatabase(rawDb) {
+        const base = rawDb && typeof rawDb === 'object' ? rawDb : JSON.parse(JSON.stringify(DEFAULT_DATA));
+        const meta = base.meta && typeof base.meta === 'object' ? base.meta : {};
+        return {
+          meta: {
+            structureUpdatedAt: Number(meta.structureUpdatedAt || base.structureUpdatedAt || 1),
+            deletedAttendance: meta.deletedAttendance && typeof meta.deletedAttendance === 'object' ? meta.deletedAttendance : {},
+            deletedSubmissions: meta.deletedSubmissions && typeof meta.deletedSubmissions === 'object' ? meta.deletedSubmissions : {},
+            deletedStudents: meta.deletedStudents && typeof meta.deletedStudents === 'object' ? meta.deletedStudents : {}
+          },
+          courses: Array.isArray(base.courses) ? base.courses : [],
+          students: Array.isArray(base.students) ? base.students : [],
+          submissions: Array.isArray(base.submissions) ? base.submissions : [],
+          attendance: Array.isArray(base.attendance) ? base.attendance : []
+        };
+      }
+
       function loadState() {
         try {
-          const raw = localStorage.getItem(STORAGE_KEY);
+          const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('puma_steam_lms_v1');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
-              if (!Array.isArray(parsed.attendance)) parsed.attendance = [];
-              if (!Array.isArray(parsed.submissions)) parsed.submissions = [];
-              if (typeof parsed.structureUpdatedAt !== 'number') parsed.structureUpdatedAt = 0;
-              return parsed;
+              return normalizeDatabase(parsed);
             }
           }
         } catch (e) {}
-        const init = JSON.parse(JSON.stringify(DEFAULT_DATA));
-        init.structureUpdatedAt = 0;
-        return init;
+        return normalizeDatabase(DEFAULT_DATA);
       }
 
       const sonoraNowYM = getSonoraYearMonth();
@@ -293,16 +322,17 @@
         calYear: sonoraNowYM.year,
         calMonth: sonoraNowYM.month,
         calSelectedDate: getSonoraISODate(),
-        cloudSyncing: false,
         initialCloudReady: false,
         lastSyncTime: '',
-        lastLocalMutationAt: 0
+        cloudChannelStatus: 'connected', // 'connected' | 'syncing' | 'offline'
+        lastSnapshotHash: ''
       };
 
+      // ==================== MOTOR UNIFICADO DE SINCRONIZACIÓN EN TIEMPO REAL ====================
       function getCloudConfig() {
         let cfg = { token: DEFAULT_GITHUB_TOKEN, gistId: DEFAULT_PUBLIC_GIST_ID };
         try {
-          const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
+          const raw = localStorage.getItem(CLOUD_CONFIG_KEY) || localStorage.getItem('puma_steam_cloud_cfg_v1');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed.token) cfg.token = parsed.token;
@@ -329,19 +359,337 @@
         } catch (e) {}
       }
 
-      let activeGistIdMemory = DEFAULT_PUBLIC_GIST_ID;
-      let syncLockPromise = Promise.resolve();
+      function getRealtimeSpaceKey() {
+        const cfg = getCloudConfig();
+        const space = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_steam_main').replace(/[^a-zA-Z0-9_-]/g, '');
+        return `puma_rt_db_${space}`;
+      }
 
       function buildGitHubHeaders(token, hasBody = false) {
         const headers = { Accept: 'application/vnd.github+json' };
         const clean = String(token || '').trim();
-        if (clean) {
-          headers['Authorization'] = `token ${clean}`;
-        }
-        if (hasBody) {
-          headers['Content-Type'] = 'application/json';
-        }
+        if (clean) headers['Authorization'] = `token ${clean}`;
+        if (hasBody) headers['Content-Type'] = 'application/json';
         return headers;
+      }
+
+      // Fusión determinista sin pérdida de datos entre estado remoto y local (incluye bajas explícitas)
+      function mergeDatabases(remoteRaw, localRaw) {
+        const remote = normalizeDatabase(remoteRaw);
+        const local = normalizeDatabase(localRaw);
+
+        const mergedDeletedAttendance = { ...remote.meta.deletedAttendance, ...local.meta.deletedAttendance };
+        Object.keys(mergedDeletedAttendance).forEach(k => {
+          mergedDeletedAttendance[k] = Math.max(
+            Number(remote.meta.deletedAttendance[k] || 0),
+            Number(local.meta.deletedAttendance[k] || 0)
+          );
+        });
+
+        const mergedDeletedSubmissions = { ...remote.meta.deletedSubmissions, ...local.meta.deletedSubmissions };
+        Object.keys(mergedDeletedSubmissions).forEach(k => {
+          mergedDeletedSubmissions[k] = Math.max(
+            Number(remote.meta.deletedSubmissions[k] || 0),
+            Number(local.meta.deletedSubmissions[k] || 0)
+          );
+        });
+
+        const mergedDeletedStudents = { ...remote.meta.deletedStudents, ...local.meta.deletedStudents };
+        Object.keys(mergedDeletedStudents).forEach(k => {
+          mergedDeletedStudents[k] = Math.max(
+            Number(remote.meta.deletedStudents[k] || 0),
+            Number(local.meta.deletedStudents[k] || 0)
+          );
+        });
+
+        // 1. Estructura de cursos y secuencias: gana la marca de tiempo más reciente
+        const useLocalCourses = local.meta.structureUpdatedAt >= remote.meta.structureUpdatedAt;
+        const chosenCourses = useLocalCourses ? local.courses : remote.courses;
+        const chosenStructureTs = Math.max(remote.meta.structureUpdatedAt, local.meta.structureUpdatedAt);
+
+        // 2. Estudiantes: unión por ID respetando eliminaciones y última edición de perfil
+        const stuMap = new Map();
+        [...remote.students, ...local.students].forEach(stu => {
+          if (!stu || !stu.id) return;
+          const delTs = Number(mergedDeletedStudents[stu.id] || 0);
+          const itemTs = Number(stu.updatedAt || 1);
+          if (delTs > itemTs) return;
+          const prev = stuMap.get(stu.id);
+          if (!prev || Number(stu.updatedAt || 0) >= Number(prev.updatedAt || 0)) {
+            stuMap.set(stu.id, stu);
+          }
+        });
+
+        // 3. Entregas y calificaciones: unión por clave única (courseId|assignmentId|studentId)
+        const subMap = new Map();
+        [...remote.submissions, ...local.submissions].forEach(sub => {
+          if (!sub || !sub.courseId || !sub.assignmentId || !sub.studentId) return;
+          const key = `${sub.courseId}|${sub.assignmentId}|${sub.studentId}`;
+          const delTs = Number(mergedDeletedSubmissions[key] || 0);
+          const itemTs = Number(sub.updatedAt || 1);
+          if (delTs > itemTs) return;
+          const prev = subMap.get(key);
+          if (!prev || Number(sub.updatedAt || 0) >= Number(prev.updatedAt || 0)) {
+            subMap.set(key, sub);
+          }
+        });
+
+        // 4. Asistencias (1 diaria por curso/fecha/estudiante): unión respetando bajas y re-escaneos posteriores
+        const attMap = new Map();
+        [...remote.attendance, ...local.attendance].forEach(att => {
+          if (!att || !att.courseId || !att.date || !att.studentId) return;
+          const key = `${att.courseId}|${att.date}|${att.studentId}`;
+          const delTs = Number(mergedDeletedAttendance[key] || 0);
+          const itemTs = Number(att.createdAtTs || 1);
+          if (delTs > itemTs) return;
+          const prev = attMap.get(key);
+          if (!prev || Number(att.createdAtTs || 0) >= Number(prev.createdAtTs || 0)) {
+            attMap.set(key, att);
+          }
+        });
+
+        return {
+          meta: {
+            structureUpdatedAt: chosenStructureTs,
+            deletedAttendance: mergedDeletedAttendance,
+            deletedSubmissions: mergedDeletedSubmissions,
+            deletedStudents: mergedDeletedStudents
+          },
+          courses: chosenCourses,
+          students: Array.from(stuMap.values()),
+          submissions: Array.from(subMap.values()),
+          attendance: Array.from(attMap.values())
+        };
+      }
+
+      // Canal primario en tiempo real (rápido, sin límite de rate-limit ni bloqueo de token público)
+      async function fetchRealtimeChannel() {
+        try {
+          const key = getRealtimeSpaceKey();
+          const res = await fetch(`${REALTIME_KV_BASE}/${encodeURIComponent(key)}?_t=${Date.now()}`, {
+            headers: { Accept: 'application/json' }
+          });
+          if (res.status === 404) return null;
+          if (!res.ok) return null;
+          const data = await res.json();
+          if (data && Array.isArray(data.courses) && Array.isArray(data.students)) {
+            return normalizeDatabase(data);
+          }
+          return null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      async function pushRealtimeChannel(dbSnapshot) {
+        try {
+          const key = getRealtimeSpaceKey();
+          const res = await fetch(`${REALTIME_KV_BASE}/${encodeURIComponent(key)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dbSnapshot)
+          });
+          return res.ok;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      // Canal secundario de respaldo en GitHub Gist
+      async function fetchGistChannel(cfg) {
+        const gistId = cfg.gistId;
+        if (!gistId) return null;
+        try {
+          let res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
+            headers: buildGitHubHeaders(cfg.token, false)
+          });
+          if (res.status === 401 || res.status === 403) {
+            res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
+              headers: { Accept: 'application/vnd.github+json' }
+            });
+          }
+          if (!res.ok) return null;
+          const data = await res.json();
+          const fileObj = data.files && (data.files['puma_steam_db.json'] || Object.values(data.files)[0]);
+          if (!fileObj) return null;
+          let rawContent = fileObj.content;
+          if (fileObj.truncated && fileObj.raw_url) {
+            const rawRes = await fetch(`${fileObj.raw_url}?_t=${Date.now()}`);
+            if (rawRes.ok) rawContent = await rawRes.text();
+          }
+          if (!rawContent) return null;
+          const parsed = JSON.parse(rawContent);
+          if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
+            return normalizeDatabase(parsed);
+          }
+          return null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      async function pushGistChannel(cfg, dbSnapshot) {
+        if (!cfg.token) return false;
+        try {
+          const payload = {
+            description: 'PLATAFORMA PUMA STEAM - Base de datos sincronizada',
+            public: false,
+            files: {
+              'puma_steam_db.json': {
+                content: JSON.stringify(dbSnapshot, null, 2)
+              }
+            }
+          };
+          const url = cfg.gistId
+            ? `https://api.github.com/gists/${encodeURIComponent(cfg.gistId)}`
+            : 'https://api.github.com/gists';
+          const method = cfg.gistId ? 'PATCH' : 'POST';
+          const res = await fetch(url, {
+            method,
+            headers: buildGitHubHeaders(cfg.token, true),
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) return false;
+          const data = await res.json();
+          if (data.id && data.id !== cfg.gistId) {
+            saveCloudConfig(cfg.token, data.id);
+          }
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      let syncQueuePromise = Promise.resolve();
+      let isPullInFlight = false;
+      let lastGistCheckAt = 0;
+
+      function persistLocalStorage() {
+        try {
+          const serialized = JSON.stringify(appState.db);
+          appState.lastSnapshotHash = serialized;
+          localStorage.setItem(STORAGE_KEY, serialized);
+        } catch (e) {}
+      }
+
+      // Sincronización de lectura en tiempo real (con backoff adaptativo y sin bloquear la escritura del usuario)
+      async function syncNow(options = {}) {
+        const { silent = true, forceGist = false, skipRender = false } = options;
+        if (isPullInFlight && !forceGist) return false;
+        isPullInFlight = true;
+        setSyncStatus('syncing');
+
+        try {
+          const cfg = getCloudConfig();
+          const shouldCheckGist = forceGist || Date.now() - lastGistCheckAt > 12000;
+          if (shouldCheckGist) lastGistCheckAt = Date.now();
+
+          const [rtDb, gistDb] = await Promise.all([
+            fetchRealtimeChannel(),
+            shouldCheckGist ? fetchGistChannel(cfg) : Promise.resolve(null)
+          ]);
+
+          let combinedRemote = null;
+          if (rtDb && gistDb) {
+            combinedRemote = mergeDatabases(gistDb, rtDb);
+          } else {
+            combinedRemote = rtDb || gistDb;
+          }
+
+          if (!combinedRemote) {
+            // Si aún no hay datos en el canal en tiempo real pero tenemos datos locales, inicializarlo
+            if (rtDb === null) {
+              await pushRealtimeChannel(appState.db);
+            }
+            appState.lastSyncTime = getSonoraTimeHHMMSS();
+            setSyncStatus('connected');
+            if (!silent) showToast('Plataforma sincronizada en tiempo real', 'info');
+            return false;
+          }
+
+          const merged = mergeDatabases(combinedRemote, appState.db);
+          const nextJson = JSON.stringify(merged);
+          const prevJson = appState.lastSnapshotHash || JSON.stringify(appState.db);
+          appState.lastSyncTime = getSonoraTimeHHMMSS();
+          setSyncStatus('connected');
+
+          if (nextJson === prevJson) {
+            if (!silent) showToast('Todos los datos están actualizados al instante', 'info');
+            return false;
+          }
+
+          appState.db = merged;
+          persistLocalStorage();
+
+          // Mantener sincronizada sesión del estudiante si actualizó su perfil desde otro dispositivo
+          if (appState.session && appState.session.role === 'student') {
+            const refreshedStu = appState.db.students.find(s => s.id === appState.session.user.id);
+            if (refreshedStu) appState.session.user = refreshedStu;
+          }
+
+          if (!silent) showToast('Cambios recibidos en tiempo real', 'success');
+          if (!skipRender) refreshActiveViewSafely();
+          return true;
+        } catch (e) {
+          setSyncStatus('offline');
+          if (!silent) showToast('Sin conexión momentánea. Se reintentará automáticamente.', 'error');
+          return false;
+        } finally {
+          isPullInFlight = false;
+        }
+      }
+
+      // Guardado inmediato y propagación en tiempo real a ambos canales
+      function saveState(options = {}) {
+        const { silent = true, isStructural = false } = options;
+        if (isStructural) {
+          appState.db.meta.structureUpdatedAt = Date.now();
+        }
+        persistLocalStorage();
+
+        syncQueuePromise = syncQueuePromise
+          .then(async () => {
+            setSyncStatus('syncing');
+            const cfg = getCloudConfig();
+            // Primero leer canal en vivo para fusionar cambios concurrentes de otros alumnos/docentes
+            const latestRt = await fetchRealtimeChannel();
+            if (latestRt) {
+              appState.db = mergeDatabases(latestRt, appState.db);
+              persistLocalStorage();
+            }
+            const [rtOk, gistOk] = await Promise.all([
+              pushRealtimeChannel(appState.db),
+              pushGistChannel(cfg, appState.db)
+            ]);
+            appState.lastSyncTime = getSonoraTimeHHMMSS();
+            setSyncStatus(rtOk || gistOk ? 'connected' : 'offline');
+            if (!silent) {
+              if (rtOk || gistOk) showToast('Guardado y sincronizado en tiempo real', 'success');
+              else showToast('Guardado localmente (pendiente de conexión)', 'error');
+            }
+            return { ok: rtOk || gistOk, rtOk, gistOk };
+          })
+          .catch(() => ({ ok: false }));
+
+        return syncQueuePromise;
+      }
+
+      function setSyncStatus(status) {
+        appState.cloudChannelStatus = status;
+        updateRealtimeIndicator();
+      }
+
+      function updateRealtimeIndicator() {
+        const badge = document.getElementById('realtime-sync-badge');
+        if (!badge) return;
+        const timeText = appState.lastSyncTime ? ` · ${esc(appState.lastSyncTime)}` : '';
+        if (appState.cloudChannelStatus === 'offline') {
+          badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800';
+          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span> Reconectando · Hermosillo, Sonora`;
+        } else {
+          badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700';
+          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo · Hermosillo, Sonora${timeText}`;
+        }
       }
 
       function isUserTyping() {
@@ -351,593 +699,28 @@
         return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       }
 
-      function updateRealtimeIndicator() {
-        const badge = document.getElementById('realtime-sync-badge');
-        if (badge) {
-          badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo · Hermosillo, Sonora${appState.lastSyncTime ? ' (' + esc(appState.lastSyncTime) + ')' : ''}`;
+      // Actualización inteligente de UI sin perder foco ni cerrar modales activos
+      function refreshActiveViewSafely() {
+        if (!appState.session) {
+          if (!isUserTyping()) renderAuth();
+          return;
+        }
+        const modalRoot = document.getElementById('modal-root');
+        const modalOpen = modalRoot && !modalRoot.classList.contains('hidden');
+        if (modalOpen) {
+          refreshOpenAttendanceModalIfVisible();
+          return;
+        }
+        if (isUserTyping()) return;
+
+        if (appState.activeView === 'course-detail') {
+          renderCourseDetail();
+        } else {
+          renderCurrentView();
         }
       }
 
-      function mergeCollectionsById(remoteArr, localArr, uniqueKeyFn) {
-        const map = new Map();
-        (Array.isArray(remoteArr) ? remoteArr : []).forEach(item => {
-          const key = uniqueKeyFn ? uniqueKeyFn(item) : item.id;
-          if (key) map.set(key, item);
-        });
-        (Array.isArray(localArr) ? localArr : []).forEach(item => {
-          const key = uniqueKeyFn ? uniqueKeyFn(item) : item.id;
-          if (key) map.set(key, item);
-        });
-        return Array.from(map.values());
-      }
-
-      function mergeDatabases(remoteDb, localDb, preferLocalStructure = false) {
-        const remoteTs = Number(remoteDb?.structureUpdatedAt || 0);
-        const localTs = Number(localDb?.structureUpdatedAt || 0);
-        const useLocalCourses = preferLocalStructure || localTs >= remoteTs;
-        const chosenCourses = useLocalCourses
-          ? (Array.isArray(localDb.courses) ? localDb.courses : remoteDb.courses || [])
-          : (Array.isArray(remoteDb.courses) ? remoteDb.courses : localDb.courses || []);
-        const chosenStructureTs = Math.max(remoteTs, localTs);
-
-        return {
-          structureUpdatedAt: chosenStructureTs,
-          courses: chosenCourses,
-          students: mergeCollectionsById(remoteDb.students, localDb.students, s => s.id),
-          submissions: mergeCollectionsById(
-            remoteDb.submissions,
-            localDb.submissions,
-            s => `${s.courseId}|${s.assignmentId}|${s.studentId}`
-          ),
-          attendance: mergeCollectionsById(
-            remoteDb.attendance,
-            localDb.attendance,
-            a => `${a.courseId}|${a.date}|${a.studentId}`
-          )
-        };
-      }
-
-      async function resolveSharedGistId(cfg) {
-        if (cfg.gistId) {
-          activeGistIdMemory = cfg.gistId;
-          return cfg.gistId;
-        }
-        if (activeGistIdMemory) {
-          return activeGistIdMemory;
-        }
-        if (!cfg.token) return '';
-        try {
-          const res = await fetch(`https://api.github.com/gists?per_page=50&_t=${Date.now()}`, {
-            headers: buildGitHubHeaders(cfg.token, false)
-          });
-          if (!res.ok) return '';
-          const list = await res.json();
-          if (Array.isArray(list)) {
-            const found = list.find(g => g.files && g.files['puma_steam_db.json']);
-            if (found && found.id) {
-              activeGistIdMemory = found.id;
-              cfg.gistId = found.id;
-              saveCloudConfig(cfg.token, found.id);
-              return found.id;
-            }
-          }
-        } catch (e) {}
-        return '';
-      }
-
-      async function fetchRemoteDatabase(cfg, gistId) {
-        let res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
-          headers: buildGitHubHeaders(cfg.token, false)
-        });
-        if (res.status === 401 || res.status === 403) {
-          res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
-            headers: { Accept: 'application/vnd.github+json' }
-          });
-        }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const fileObj = data.files && (data.files['puma_steam_db.json'] || Object.values(data.files)[0]);
-        if (!fileObj) return null;
-        let rawContent = fileObj.content;
-        if (fileObj.truncated && fileObj.raw_url) {
-          const rawRes = await fetch(`${fileObj.raw_url}?_t=${Date.now()}`);
-          if (rawRes.ok) rawContent = await rawRes.text();
-        }
-        if (!rawContent) return null;
-        const parsed = JSON.parse(rawContent);
-        if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
-          if (!Array.isArray(parsed.attendance)) parsed.attendance = [];
-          if (!Array.isArray(parsed.submissions)) parsed.submissions = [];
-          return parsed;
-        }
-        return null;
-      }
-
-      async function verifyCloudWriteAccess() {
-        const cfg = getCloudConfig();
-        if (!cfg.token) {
-          return { ok: true, reason: 'Canal de asistencia en vivo activo' };
-        }
-        try {
-          const res = await fetch('https://api.github.com/user', {
-            headers: buildGitHubHeaders(cfg.token, false)
-          });
-          if (!res.ok) {
-            return { ok: true, reason: 'Canal de asistencia en vivo activo (respaldo GitHub en solo lectura)' };
-          }
-          return { ok: true, reason: 'Conectado en tiempo real' };
-        } catch (e) {
-          return { ok: true, reason: 'Canal de asistencia en vivo activo' };
-        }
-      }
-
-      function getAttendanceBucketKey() {
-        const cfg = getCloudConfig();
-        const space = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_steam_default').replace(/[^a-zA-Z0-9_-]/g, '');
-        return `att_live_${space}`;
-      }
-
-      function getStructureBucketKey() {
-        const cfg = getCloudConfig();
-        const space = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_steam_default').replace(/[^a-zA-Z0-9_-]/g, '');
-        return `struct_live_${space}`;
-      }
-
-      async function fetchRealtimeStructureCloud() {
-        try {
-          const bucketKey = getStructureBucketKey();
-          const res = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(bucketKey)}?_t=${Date.now()}`, {
-            headers: { Accept: 'application/json' }
-          });
-          if (res.status === 404) return null;
-          if (!res.ok) return null;
-          const data = await res.json();
-          if (data && Array.isArray(data.courses) && typeof data.structureUpdatedAt === 'number') {
-            return data;
-          }
-          return null;
-        } catch (e) {
-          return null;
-        }
-      }
-
-      async function pushRealtimeStructureCloud() {
-        try {
-          const bucketKey = getStructureBucketKey();
-          const payload = {
-            structureUpdatedAt: Number(appState.db.structureUpdatedAt || Date.now()),
-            courses: Array.isArray(appState.db.courses) ? appState.db.courses : []
-          };
-          const res = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(bucketKey)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          return res.ok;
-        } catch (e) {
-          return false;
-        }
-      }
-
-      async function syncRealtimeStructureCloud(pushLocal = false) {
-        try {
-          if (pushLocal) {
-            return await pushRealtimeStructureCloud();
-          }
-          if (Date.now() - appState.lastLocalMutationAt < 4000) {
-            return false;
-          }
-          const liveStruct = await fetchRealtimeStructureCloud();
-          if (!liveStruct) return false;
-          const localTs = Number(appState.db.structureUpdatedAt || 0);
-          if (liveStruct.structureUpdatedAt > localTs) {
-            appState.db.courses = liveStruct.courses;
-            appState.db.structureUpdatedAt = liveStruct.structureUpdatedAt;
-            appState.lastSyncTime = getSonoraTimeHHMMSS();
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
-            } catch (e) {}
-            updateRealtimeIndicator();
-            if (appState.session) {
-              const modalOpen = !document.getElementById('modal-root').classList.contains('hidden');
-              if (!modalOpen && !isUserTyping()) {
-                if (appState.activeView === 'course-detail') {
-                  renderCourseDetail();
-                } else {
-                  renderMain();
-                }
-              }
-            } else if (!isUserTyping()) {
-              renderAuth();
-            }
-            return true;
-          }
-          return false;
-        } catch (e) {
-          return false;
-        }
-      }
-
-      async function fetchRealtimeAttendanceCloud() {
-        try {
-          const bucketKey = getAttendanceBucketKey();
-          const res = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(bucketKey)}?_t=${Date.now()}`, {
-            headers: { Accept: 'application/json' }
-          });
-          if (res.status === 404) return [];
-          if (!res.ok) return null;
-          const data = await res.json();
-          return Array.isArray(data) ? data : null;
-        } catch (e) {
-          return null;
-        }
-      }
-
-      async function syncRealtimeAttendanceCloud(pushLocal = false) {
-        try {
-          const remoteAtt = await fetchRealtimeAttendanceCloud();
-          const currentLocal = Array.isArray(appState.db.attendance) ? appState.db.attendance : [];
-          const isRecentMutation = Date.now() - appState.lastLocalMutationAt < 4500;
-          const merged = isRecentMutation
-            ? mergeCollectionsById([], currentLocal, a => `${a.courseId}|${a.date}|${a.studentId}`)
-            : mergeCollectionsById(
-                remoteAtt || [],
-                currentLocal,
-                a => `${a.courseId}|${a.date}|${a.studentId}`
-              );
-          const changed = JSON.stringify(merged) !== JSON.stringify(currentLocal);
-          if (changed) {
-            appState.db.attendance = merged;
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
-            } catch (e) {}
-            refreshOpenAttendanceModalIfVisible();
-            if (
-              appState.session &&
-              appState.activeView === 'course-detail' &&
-              appState.courseTab === 'attendance' &&
-              !isUserTyping()
-            ) {
-              renderCourseDetail();
-            }
-          }
-          if (pushLocal || isRecentMutation || (remoteAtt !== null && merged.length > remoteAtt.length)) {
-            const bucketKey = getAttendanceBucketKey();
-            const postRes = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(bucketKey)}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(merged)
-            });
-            return postRes.ok;
-          }
-          return true;
-        } catch (e) {
-          return false;
-        }
-      }
-
-      function getCourseRosterForAttendance(course) {
-        const enrolledIds = new Set(course.enrolledStudentIds || []);
-        (appState.db.attendance || [])
-          .filter(a => a.courseId === course.id)
-          .forEach(a => enrolledIds.add(a.studentId));
-        return appState.db.students
-          .filter(s => enrolledIds.has(s.id))
-          .sort((a, b) => a.name.localeCompare(b.name, 'es'));
-      }
-
-      function renderAttendanceModalListsHtml(course, todayStr) {
-        const todayRecords = (appState.db.attendance || []).filter(
-          a => a.courseId === course.id && a.date === todayStr
-        );
-        const registeredByStudentId = new Map();
-        todayRecords.forEach(r => {
-          if (!registeredByStudentId.has(r.studentId)) {
-            registeredByStudentId.set(r.studentId, r);
-          }
-        });
-
-        const roster = getCourseRosterForAttendance(course);
-        const pendingStudents = roster.filter(s => !registeredByStudentId.has(s.id));
-
-        const pendingHtml =
-          pendingStudents.length === 0
-            ? `<div class="px-3 py-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs text-emerald-700 font-medium">
-                 ✓ Todos los estudiantes inscritos (${roster.length}) ya tienen asistencia hoy.
-               </div>`
-            : pendingStudents
-                .map(
-                  stu => `
-                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-50/80 border border-amber-200 text-xs">
-                  <div class="min-w-0">
-                    <span class="font-bold text-slate-900 block truncate">${esc(stu.name)}</span>
-                    <span class="text-[11px] text-slate-500">@${esc(stu.username)} · ${esc(stu.group)}</span>
-                  </div>
-                  <button type="button" data-manual-mark-stu="${esc(stu.id)}"
-                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex-shrink-0 cursor-pointer transition">
-                    + Marcar asistencia
-                  </button>
-                </div>
-              `
-                )
-                .join('');
-
-        const registeredList = Array.from(registeredByStudentId.values());
-        const registeredHtml =
-          registeredList.length === 0
-            ? '<p class="text-xs text-slate-400 py-1">Ningún estudiante ha registrado asistencia hoy todavía.</p>'
-            : registeredList
-                .map(
-                  r => `
-                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs">
-                  <div class="min-w-0">
-                    <span class="font-semibold text-slate-900">✓ ${esc(r.studentName)}</span>
-                    <span class="text-slate-500 ml-1.5">(${esc(r.time)})</span>
-                  </div>
-                  <button type="button" data-del-att-id="${esc(r.id)}" data-del-att-stu="${esc(r.studentId)}" data-del-att-course="${esc(course.id)}" data-del-att-date="${esc(todayStr)}"
-                    class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold flex-shrink-0 cursor-pointer transition" title="Eliminar asistencia">
-                    Eliminar
-                  </button>
-                </div>
-              `
-                )
-                .join('');
-
-        return {
-          pendingCount: pendingStudents.length,
-          registeredCount: registeredList.length,
-          html: `
-            <div class="mb-3">
-              <div class="flex items-center justify-between mb-1.5">
-                <span class="text-[11px] font-bold uppercase tracking-wide text-amber-800">Pendientes por capturar (${pendingStudents.length})</span>
-                <span class="text-[11px] text-slate-400">1 asistencia por día</span>
-              </div>
-              <div class="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
-                ${pendingHtml}
-              </div>
-            </div>
-            <div>
-              <div class="flex items-center justify-between mb-1.5">
-                <span class="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Asistencias registradas hoy (${registeredList.length})</span>
-              </div>
-              <div class="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
-                ${registeredHtml}
-              </div>
-            </div>
-          `
-        };
-      }
-
-      function wireAttendanceModalListEvents(course, todayStr) {
-        const attList = document.getElementById('att-today-list');
-        if (!attList) return;
-
-        attList.querySelectorAll('[data-manual-mark-stu]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const stuId = btn.getAttribute('data-manual-mark-stu');
-            const stu = getStudentById(stuId);
-            if (!stu) return;
-            if (!Array.isArray(appState.db.attendance)) appState.db.attendance = [];
-            const already = appState.db.attendance.find(
-              a => a.courseId === course.id && a.date === todayStr && a.studentId === stu.id
-            );
-            if (already) {
-              showToast(`${stu.name} ya tiene asistencia registrada hoy`, 'info');
-              refreshOpenAttendanceModalIfVisible();
-              return;
-            }
-            appState.db.attendance.push({
-              id: uid('att'),
-              courseId: course.id,
-              courseTitle: course.title,
-              studentId: stu.id,
-              studentName: stu.name,
-              date: todayStr,
-              time: getSonoraTimeHHMM()
-            });
-            refreshOpenAttendanceModalIfVisible();
-            if (appState.activeView === 'course-detail' && appState.courseTab === 'attendance') {
-              renderCourseDetail();
-            }
-            await saveState();
-            showToast(`Asistencia manual registrada: ${stu.name}`, 'success');
-          });
-        });
-
-        attList.querySelectorAll('[data-del-att-stu]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const stuId = btn.getAttribute('data-del-att-stu');
-            const cId = btn.getAttribute('data-del-att-course');
-            const dStr = btn.getAttribute('data-del-att-date');
-            appState.db.attendance = (appState.db.attendance || []).filter(
-              a => !(a.courseId === cId && a.date === dStr && a.studentId === stuId)
-            );
-            refreshOpenAttendanceModalIfVisible();
-            if (appState.activeView === 'course-detail' && appState.courseTab === 'attendance') {
-              renderCourseDetail();
-            }
-            await saveState();
-            showToast('Asistencia eliminada', 'info');
-          });
-        });
-      }
-
-      function refreshOpenAttendanceModalIfVisible() {
-        const attList = document.getElementById('att-today-list');
-        const courseIdAttr = attList ? attList.getAttribute('data-att-course-id') : null;
-        if (!attList || !courseIdAttr) return;
-        const course = getCourseById(courseIdAttr);
-        if (!course) return;
-        const todayStr = getTodayFormatted();
-        const rendered = renderAttendanceModalListsHtml(course, todayStr);
-        const countEl = document.getElementById('att-today-count');
-        if (countEl) {
-          countEl.textContent = `Control de Asistencia Hoy · ${rendered.registeredCount} presentes / ${rendered.pendingCount} pendientes`;
-        }
-        attList.innerHTML = rendered.html;
-        wireAttendanceModalListEvents(course, todayStr);
-      }
-
-      async function pullFromCloud(silent = true, skipRender = false) {
-        if (Date.now() - appState.lastLocalMutationAt < 5000) {
-          return false;
-        }
-        await syncRealtimeAttendanceCloud(false);
-        const cfg = getCloudConfig();
-        const gistId = await resolveSharedGistId(cfg);
-        if (!gistId) {
-          if (cfg.token) {
-            await pushToCloud(true, true);
-          }
-          return false;
-        }
-        try {
-          const [parsed, liveStruct] = await Promise.all([
-            fetchRemoteDatabase(cfg, gistId),
-            fetchRealtimeStructureCloud()
-          ]);
-          if (parsed || liveStruct) {
-            const baseDb = parsed ? parsed : JSON.parse(JSON.stringify(appState.db));
-            if (liveStruct && liveStruct.structureUpdatedAt >= Number(baseDb.structureUpdatedAt || 0)) {
-              baseDb.courses = liveStruct.courses;
-              baseDb.structureUpdatedAt = liveStruct.structureUpdatedAt;
-            }
-            const mergedDb = mergeDatabases(baseDb, appState.db, false);
-            const prevJson = JSON.stringify(appState.db);
-            const nextJson = JSON.stringify(mergedDb);
-            appState.lastSyncTime = getSonoraTimeHHMMSS();
-            if (prevJson === nextJson) {
-              if (!silent) showToast('La plataforma ya está al día', 'info');
-              updateRealtimeIndicator();
-              return false;
-            }
-            appState.db = mergedDb;
-            try {
-              localStorage.setItem(STORAGE_KEY, nextJson);
-            } catch (e) {}
-            if (!silent) showToast('Datos sincronizados desde la nube', 'success');
-            if (!skipRender) {
-              if (appState.session) {
-                const modalOpen = !document.getElementById('modal-root').classList.contains('hidden');
-                if (!modalOpen && !isUserTyping()) {
-                  renderMain();
-                } else {
-                  refreshOpenAttendanceModalIfVisible();
-                }
-              } else if (!isUserTyping()) {
-                renderAuth();
-              }
-            }
-            updateRealtimeIndicator();
-            return true;
-          }
-        } catch (e) {
-          if (!silent) showToast('No se pudo cargar desde la nube. Verifica el token o conexión.', 'error');
-        }
-        return false;
-      }
-
-      function pushToCloud(silent = true, mergeBeforePush = true) {
-        syncLockPromise = syncLockPromise
-          .then(async () => {
-            appState.cloudSyncing = true;
-            try {
-              const [attLiveOk, structLiveOk] = await Promise.all([
-                syncRealtimeAttendanceCloud(true),
-                syncRealtimeStructureCloud(true)
-              ]);
-              const cfg = getCloudConfig();
-              if (!cfg.token) {
-                return attLiveOk || structLiveOk
-                  ? { ok: true }
-                  : { ok: false, error: 'Sin conexión a la nube en tiempo real' };
-              }
-              const gistId = await resolveSharedGistId(cfg);
-              if (gistId && mergeBeforePush) {
-                try {
-                  const latestRemote = await fetchRemoteDatabase(cfg, gistId);
-                  if (latestRemote) {
-                    const isRecentMutation = Date.now() - appState.lastLocalMutationAt < 4500;
-                    appState.db = isRecentMutation
-                      ? {
-                          ...mergeDatabases(latestRemote, appState.db, true),
-                          attendance: mergeCollectionsById(
-                            [],
-                            appState.db.attendance,
-                            a => `${a.courseId}|${a.date}|${a.studentId}`
-                          )
-                        }
-                      : mergeDatabases(latestRemote, appState.db, true);
-                    try {
-                      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
-                    } catch (e) {}
-                  }
-                } catch (e) {}
-              }
-              const payload = {
-                description: 'PLATAFORMA PUMA STEAM - Base de datos sincronizada',
-                public: false,
-                files: {
-                  'puma_steam_db.json': {
-                    content: JSON.stringify(appState.db, null, 2)
-                  }
-                }
-              };
-              const url = gistId
-                ? `https://api.github.com/gists/${encodeURIComponent(gistId)}`
-                : 'https://api.github.com/gists';
-              const method = gistId ? 'PATCH' : 'POST';
-              const res = await fetch(url, {
-                method,
-                headers: buildGitHubHeaders(cfg.token, true),
-                body: JSON.stringify(payload)
-              });
-              if (!res.ok) {
-                if (attLiveOk || structLiveOk) {
-                  appState.lastSyncTime = getSonoraTimeHHMMSS();
-                  updateRealtimeIndicator();
-                  refreshOpenAttendanceModalIfVisible();
-                  return { ok: true };
-                }
-                const errMsg =
-                  res.status === 401 || res.status === 403
-                    ? 'Token revocado por GitHub (401/403). Actualiza el token en Sincronización Nube.'
-                    : `Error HTTP ${res.status} al guardar en GitHub`;
-                throw new Error(errMsg);
-              }
-              const data = await res.json();
-              if (data.id) {
-                activeGistIdMemory = data.id;
-                if (data.id !== gistId) {
-                  saveCloudConfig(cfg.token, data.id);
-                }
-              }
-              appState.lastSyncTime = getSonoraTimeHHMMSS();
-              updateRealtimeIndicator();
-              refreshOpenAttendanceModalIfVisible();
-              if (!silent) showToast('Datos guardados en la nube de GitHub', 'success');
-              return { ok: true };
-            } catch (e) {
-              const msg = e && e.message ? e.message : 'Error al sincronizar con GitHub.';
-              if (!silent) showToast(msg, 'error');
-              return { ok: false, error: msg };
-            } finally {
-              appState.cloudSyncing = false;
-            }
-          })
-          .catch(() => ({ ok: false, error: 'Error inesperado al sincronizar' }));
-        return syncLockPromise;
-      }
-
-      function saveState() {
-        appState.lastLocalMutationAt = Date.now();
-        appState.db.structureUpdatedAt = Date.now();
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
-        } catch (e) {}
-        return pushToCloud(true, true);
-      }
-
+      // ==================== UTILIDADES GENERALES ====================
       function uid(prefix) {
         return prefix + '-' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3);
       }
@@ -966,7 +749,7 @@
           toast.style.opacity = '0';
           toast.style.transition = 'opacity 0.2s ease';
           setTimeout(() => toast.remove(), 220);
-        }, 3200);
+        }, 3000);
       }
 
       let activeQrScanner = null;
@@ -1035,14 +818,13 @@
         ) || null;
       }
 
-      // ==================== AUTH VIEWS ====================
+      // ==================== VISTAS DE AUTENTICACIÓN ====================
       function renderAuth() {
         const isRegister = appState.authMode === 'register';
         const app = document.getElementById('app');
 
         app.innerHTML = `
           <div class="min-h-screen flex flex-col lg:flex-row bg-slate-100">
-            <!-- Left Institutional Banner -->
             <div class="lg:w-5/12 bg-gradient-to-br from-navy-900 via-navy-800 to-slate-900 text-white p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
               <div class="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-puma-500/15 blur-2xl pointer-events-none"></div>
               <div class="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-blue-500/15 blur-2xl pointer-events-none"></div>
@@ -1060,10 +842,10 @@
                   </div>
                 </div>
                 <h2 class="text-3xl lg:text-4xl font-extrabold leading-tight mb-4">
-                  Aprendizaje digital, recursos y seguimiento académico en un solo lugar.
+                  Aprendizaje digital, secuencias didácticas y seguimiento en tiempo real.
                 </h2>
                 <p class="text-slate-300 text-sm lg:text-base leading-relaxed max-w-md">
-                  Accede a tus cursos, descarga materiales de clase, entrega tus actividades y consulta tus calificaciones de forma rápida desde cualquier dispositivo.
+                  Accede a tus cursos, consulta tus secuencias, registra tu asistencia con QR y entrega tus actividades desde cualquier dispositivo.
                 </p>
               </div>
               <div class="relative z-10 mt-10 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-300">
@@ -1072,7 +854,6 @@
               </div>
             </div>
 
-            <!-- Right Auth Card -->
             <div class="flex-1 flex items-center justify-center p-6 sm:p-10">
               <div class="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200/80 p-7 sm:p-9 fade-in">
                 ${isRegister ? renderRegisterFormHtml() : renderLoginFormHtml()}
@@ -1100,10 +881,10 @@
         const syncingBanner = !appState.initialCloudReady
           ? `<div class="mb-4 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-800 flex items-center gap-2">
                <span class="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
-               <span>Sincronizando usuarios y cursos en tiempo real...</span>
+               <span>Conectando base de datos en tiempo real...</span>
              </div>`
           : `<div class="mb-4 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
-               <span>✓ Base de datos sincronizada (${appState.db.students.length} estudiantes)</span>
+               <span>✓ Sincronizado (${appState.db.students.length} estudiantes)</span>
                <span id="realtime-sync-badge" class="inline-flex items-center gap-1 font-semibold"><span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En vivo</span>
              </div>`;
 
@@ -1199,13 +980,14 @@
         const errBox = document.getElementById('login-error');
         const btn = document.getElementById('btn-login-submit');
 
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Sincronizando...';
+        }
+        await syncNow({ silent: true, forceGist: true, skipRender: true });
+        appState.initialCloudReady = true;
+
         if (user === ADMIN_USER && pass === ADMIN_PASS) {
-          if (btn) {
-            btn.disabled = true;
-            btn.textContent = 'Sincronizando...';
-          }
-          await pullFromCloud(true, true);
-          appState.initialCloudReady = true;
           appState.session = {
             role: 'admin',
             user: { id: 'admin', name: 'Mtro. Francisco J. Tapia López', username: ADMIN_USER }
@@ -1214,17 +996,6 @@
           showToast('Bienvenido, Mtro. Francisco', 'success');
           renderMain();
           return;
-        }
-
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Verificando en la nube...';
-        }
-        await pullFromCloud(true, true);
-        appState.initialCloudReady = true;
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Entrar a la plataforma';
         }
 
         const student = appState.db.students.find(
@@ -1238,6 +1009,10 @@
           return;
         }
 
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Entrar a la plataforma';
+        }
         errBox.textContent = 'Usuario o contraseña incorrectos. Verifica tus datos.';
         errBox.classList.remove('hidden');
       }
@@ -1260,9 +1035,9 @@
 
         if (btn) {
           btn.disabled = true;
-          btn.textContent = 'Registrando y sincronizando...';
+          btn.textContent = 'Registrando...';
         }
-        await pullFromCloud(true, true);
+        await syncNow({ silent: true, forceGist: true, skipRender: true });
         appState.initialCloudReady = true;
 
         const exists = appState.db.students.some(
@@ -1285,7 +1060,8 @@
           password,
           email,
           group,
-          createdAt: getSonoraISODate()
+          createdAt: getSonoraISODate(),
+          updatedAt: Date.now()
         };
         appState.db.students.push(newStudent);
         await saveState();
@@ -1293,11 +1069,11 @@
         appState.session = { role: 'student', user: newStudent };
         appState.authMode = 'login';
         appState.activeView = 'catalog';
-        showToast('¡Cuenta creada! Tu contraseña inicial es aB123456. (cámbiala en Mi Perfil).', 'success');
+        showToast('¡Cuenta creada! Tu contraseña inicial es aB123456.', 'success');
         renderMain();
       }
 
-      // ==================== MAIN LAYOUT ====================
+      // ==================== LAYOUT PRINCIPAL ====================
       function renderMain() {
         const app = document.getElementById('app');
         const isAdmin = appState.session.role === 'admin';
@@ -1320,7 +1096,6 @@
 
         app.innerHTML = `
           <div class="min-h-screen flex flex-col md:flex-row bg-slate-50">
-            <!-- Sidebar Desktop + Mobile Drawer -->
             <aside class="bg-navy-900 text-white w-full md:w-64 md:min-h-screen flex-shrink-0 flex flex-col">
               <div class="px-5 py-4 flex items-center justify-between border-b border-white/10">
                 <div class="flex items-center gap-2.5">
@@ -1370,7 +1145,6 @@
               </div>
             </aside>
 
-            <!-- Main Content Area -->
             <main class="flex-1 flex flex-col min-w-0">
               <header class="bg-white border-b border-slate-200 px-5 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1485,7 +1259,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             ${statCard('Cursos Activos', courses.length, 'Materias publicadas', 'bg-blue-50 text-blue-700')}
             ${statCard('Estudiantes', students.length, 'Cuentas registradas', 'bg-emerald-50 text-emerald-700')}
-            ${statCard('Actividades', totalAssignments, 'Tareas en módulos', 'bg-amber-50 text-amber-700')}
+            ${statCard('Actividades', totalAssignments, 'Tareas en secuencias', 'bg-amber-50 text-amber-700')}
             ${statCard('Por Calificar', pendingSubs, 'Entregas pendientes', 'bg-rose-50 text-rose-700')}
           </div>
 
@@ -1657,7 +1431,7 @@
         `;
       }
 
-      // ==================== COURSES LIST & CATALOG ====================
+      // ==================== CURSOS Y CATÁLOGO ====================
       function renderCoursesList() {
         const container = document.getElementById('view-content');
         const isAdmin = appState.session.role === 'admin';
@@ -1670,7 +1444,7 @@
           container.innerHTML = `
             <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
               <h2 class="text-base font-bold text-slate-900 mb-2">${isAdmin ? 'No hay cursos creados' : 'No estás inscrito en ningún curso'}</h2>
-              <p class="text-sm text-slate-500 mb-5">${isAdmin ? 'Crea tu primer curso para comenzar a subir módulos y tareas.' : 'Explora el catálogo para matricularte en tus materias.'}</p>
+              <p class="text-sm text-slate-500 mb-5">${isAdmin ? 'Crea tu primer curso para comenzar a subir secuencias y tareas.' : 'Explora el catálogo para matricularte en tus materias.'}</p>
               <button type="button" id="empty-course-action" class="px-5 py-2.5 rounded-xl bg-puma-500 hover:bg-puma-600 text-white text-sm font-semibold cursor-pointer">
                 ${isAdmin ? '+ Crear primer curso' : 'Explorar catálogo'}
               </button>
@@ -1689,8 +1463,8 @@
         container.innerHTML = `
           <div class="mb-6 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 class="text-sm font-bold text-slate-900">Registro de Asistencia del Día</h2>
-              <p class="text-xs text-slate-500">${isAdmin ? 'Genera un código QR grande para proyectar a tus estudiantes.' : 'Escanea el código QR proyectado por tu profesor con tu cámara.'}</p>
+              <h2 class="text-sm font-bold text-slate-900">Registro de Asistencia del Día (Hermosillo, Sonora)</h2>
+              <p class="text-xs text-slate-500">${isAdmin ? 'Genera un código QR en vivo o marca asistencia manual a alumnos pendientes.' : 'Escanea el código QR proyectado por tu profesor con tu cámara.'}</p>
             </div>
             <button type="button" id="btn-courses-top-attendance"
               class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm flex items-center gap-2 cursor-pointer transition">
@@ -1717,7 +1491,7 @@
                     <p class="text-xs font-semibold text-puma-600 mb-1">${esc(c.category)}</p>
                     <p class="text-sm text-slate-600 line-clamp-3">${esc(c.description)}</p>
                     <div class="mt-4 flex items-center gap-4 text-xs text-slate-500">
-                      <span>${c.modules.length} módulos</span>
+                      <span>${c.modules.length} secuencias</span>
                       <span>${c.enrolledStudentIds.length} inscritos</span>
                     </div>
                   </div>
@@ -1767,7 +1541,7 @@
             const id = btn.getAttribute('data-delete-course');
             const course = getCourseById(id);
             openModal('Confirmar eliminación', `
-              <p class="text-sm text-slate-600 mb-5">¿Deseas eliminar el curso <strong>${esc(course?.title)}</strong>? Esta acción eliminará sus módulos y entregas asociadas.</p>
+              <p class="text-sm text-slate-600 mb-5">¿Deseas eliminar el curso <strong>${esc(course?.title)}</strong>? Esta acción eliminará sus secuencias y entregas asociadas.</p>
               <div class="flex justify-end gap-2">
                 <button type="button" id="cancel-del-course" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer">Cancelar</button>
                 <button type="button" id="confirm-del-course" class="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-semibold cursor-pointer">Eliminar curso</button>
@@ -1777,7 +1551,7 @@
               document.getElementById('confirm-del-course').addEventListener('click', () => {
                 appState.db.courses = appState.db.courses.filter(c => c.id !== id);
                 appState.db.submissions = appState.db.submissions.filter(s => s.courseId !== id);
-                saveState();
+                saveState({ isStructural: true });
                 closeModal();
                 showToast('Curso eliminado', 'info');
                 renderMain();
@@ -1800,7 +1574,7 @@
 
         container.innerHTML = `
           <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <p class="text-sm text-slate-600">Matricúlate en tus materias para acceder a sus módulos y actividades.</p>
+            <p class="text-sm text-slate-600">Matricúlate en tus materias para acceder a sus secuencias y actividades.</p>
             <input id="catalog-search" type="search" value="${esc(appState.searchQuery)}" placeholder="Buscar por nombre o clave..."
               class="w-full sm:w-72 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-puma-500" />
           </div>
@@ -1850,7 +1624,7 @@
             const c = getCourseById(btn.getAttribute('data-enroll'));
             if (c && !c.enrolledStudentIds.includes(userId)) {
               c.enrolledStudentIds.push(userId);
-              saveState();
+              saveState({ isStructural: true });
               showToast(`Matriculado en ${c.title}`, 'success');
               renderCourseCatalog();
             }
@@ -1862,7 +1636,7 @@
             const c = getCourseById(btn.getAttribute('data-unenroll'));
             if (c) {
               c.enrolledStudentIds = c.enrolledStudentIds.filter(id => id !== userId);
-              saveState();
+              saveState({ isStructural: true });
               showToast(`Saliste de ${c.title}`, 'info');
               renderCourseCatalog();
             }
@@ -1879,7 +1653,7 @@
         });
       }
 
-      // ==================== COURSE DETAIL ====================
+      // ==================== DETALLE DE CURSO Y SECUENCIAS ====================
       function renderCourseDetail() {
         const container = document.getElementById('view-content');
         const course = getCourseById(appState.selectedCourseId);
@@ -2125,7 +1899,7 @@
               const tmp = course.modules[idx];
               course.modules[idx] = course.modules[targetIdx];
               course.modules[targetIdx] = tmp;
-              saveState();
+              saveState({ isStructural: true });
               renderCourseDetail();
             });
           });
@@ -2186,13 +1960,11 @@
               `, () => {
                 document.getElementById('cancel-book-del-att').addEventListener('click', closeModal);
                 document.getElementById('confirm-book-del-att').addEventListener('click', async () => {
-                  appState.db.attendance = (appState.db.attendance || []).filter(
-                    a => !(a.courseId === cId && a.date === dStr && a.studentId === sId)
-                  );
+                  deleteAttendanceRecord(cId, dStr, sId);
                   closeModal();
                   renderCourseDetail();
                   await saveState();
-                  showToast('Asistencia eliminada del libro y sincronizada en la nube', 'info');
+                  showToast('Asistencia eliminada y sincronizada en tiempo real', 'info');
                 });
               });
             });
@@ -2212,6 +1984,11 @@
               `, () => {
                 document.getElementById('cancel-book-clear-att').addEventListener('click', closeModal);
                 document.getElementById('confirm-book-clear-att').addEventListener('click', async () => {
+                  (appState.db.attendance || [])
+                    .filter(a => a.courseId === cId && a.studentId === sId)
+                    .forEach(a => {
+                      appState.db.meta.deletedAttendance[`${a.courseId}|${a.date}|${a.studentId}`] = Date.now();
+                    });
                   appState.db.attendance = (appState.db.attendance || []).filter(
                     a => !(a.courseId === cId && a.studentId === sId)
                   );
@@ -2230,7 +2007,7 @@
         }
       }
 
-      // ==================== GRADES & SUBMISSIONS ====================
+      // ==================== CALIFICACIONES Y ENTREGAS ====================
       function renderAdminGrades() {
         const container = document.getElementById('view-content');
         const subs = appState.db.submissions;
@@ -2376,7 +2153,7 @@
         `;
       }
 
-      // ==================== ADMIN STUDENTS & STUDENT PROFILE ====================
+      // ==================== ESTUDIANTES Y PERFIL ====================
       function renderAdminStudents() {
         const container = document.getElementById('view-content');
         const students = appState.db.students;
@@ -2435,12 +2212,13 @@
         container.querySelectorAll('[data-del-student]').forEach(btn => {
           btn.addEventListener('click', () => {
             const id = btn.getAttribute('data-del-student');
+            appState.db.meta.deletedStudents[id] = Date.now();
             appState.db.students = appState.db.students.filter(s => s.id !== id);
             appState.db.courses.forEach(c => {
               c.enrolledStudentIds = c.enrolledStudentIds.filter(sid => sid !== id);
             });
             appState.db.submissions = appState.db.submissions.filter(sub => sub.studentId !== id);
-            saveState();
+            saveState({ isStructural: true });
             showToast('Estudiante eliminado', 'info');
             renderAdminStudents();
           });
@@ -2507,7 +2285,8 @@
               password: 'aB123456.',
               email,
               group,
-              createdAt: getSonoraISODate()
+              createdAt: getSonoraISODate(),
+              updatedAt: Date.now()
             });
             saveState();
             closeModal();
@@ -2528,7 +2307,7 @@
             <div class="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 class="text-base font-bold text-slate-900">Libro de Asistencia · ${esc(course.title)}</h3>
-                <p class="text-xs text-slate-500">Estudiantes inscritos y asistencias registradas en tiempo real en este curso.</p>
+                <p class="text-xs text-slate-500">Estudiantes inscritos y asistencias registradas en tiempo real (Horario Hermosillo, Sonora).</p>
               </div>
               <span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">${courseAttendance.length} registros totales</span>
             </div>
@@ -2542,7 +2321,7 @@
                           <th class="px-5 py-3">Nombre del Estudiante</th>
                           <th class="px-5 py-3">Grupo</th>
                           <th class="px-5 py-3">Total de Asistencias</th>
-                          <th class="px-5 py-3">Fechas Registradas (Eliminar)</th>
+                          <th class="px-5 py-3">Fechas Registradas</th>
                           <th class="px-5 py-3 text-right">Acciones</th>
                         </tr>
                       </thead>
@@ -2666,6 +2445,7 @@
           user.name = document.getElementById('prof-name').value.trim();
           user.group = document.getElementById('prof-group').value.trim();
           user.email = document.getElementById('prof-email').value.trim();
+          user.updatedAt = Date.now();
           const idx = appState.db.students.findIndex(s => s.id === user.id);
           if (idx !== -1) appState.db.students[idx] = user;
           saveState();
@@ -2674,7 +2454,7 @@
         });
       }
 
-      // ==================== MODALS ====================
+      // ==================== MODALES DE CURSOS Y SECUENCIAS ====================
       function openCreateCourseModal() {
         openModal('Crear Nuevo Curso', `
           <form id="new-course-form" class="space-y-3.5">
@@ -2723,7 +2503,7 @@
               announcements: [],
               modules: []
             });
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Curso creado exitosamente', 'success');
             renderMain();
@@ -2753,7 +2533,7 @@
               resources: [],
               assignments: []
             });
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Secuencia agregada y sincronizada en tiempo real', 'success');
             renderCourseDetail();
@@ -2807,7 +2587,7 @@
             e.preventDefault();
             const selected = Array.from(document.querySelectorAll('#enroll-students-form input[name="enrollStu"]:checked')).map(cb => cb.value);
             course.enrolledStudentIds = selected;
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast(`Inscripciones actualizadas (${selected.length} alumnos)`, 'success');
             renderCourseDetail();
@@ -2834,7 +2614,7 @@
           document.getElementById('edit-mod-form').addEventListener('submit', e => {
             e.preventDefault();
             mod.title = document.getElementById('em-title').value.trim();
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Secuencia actualizada', 'success');
             renderCourseDetail();
@@ -2859,9 +2639,9 @@
             appState.db.submissions = appState.db.submissions.filter(
               s => !(s.courseId === course.id && assignIds.has(s.assignmentId))
             );
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
-            showToast('Secuencia eliminada', 'info');
+            showToast('Secuencia eliminada permanentemente', 'info');
             renderCourseDetail();
           });
         });
@@ -2900,7 +2680,7 @@
             res.type = document.getElementById('er-type').value;
             res.title = document.getElementById('er-title').value.trim();
             res.detail = document.getElementById('er-detail').value.trim();
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Material actualizado', 'success');
             renderCourseDetail();
@@ -2923,7 +2703,7 @@
           document.getElementById('dr-cancel').addEventListener('click', closeModal);
           document.getElementById('dr-confirm').addEventListener('click', () => {
             mod.resources = mod.resources.filter(r => r.id !== resId);
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Material eliminado', 'info');
             renderCourseDetail();
@@ -2957,7 +2737,7 @@
               body: document.getElementById('na-body').value.trim(),
               date: getSonoraISODate()
             });
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Aviso publicado', 'success');
             renderCourseDetail();
@@ -3002,7 +2782,7 @@
               title: document.getElementById('nr-title').value.trim(),
               detail: document.getElementById('nr-detail').value.trim()
             });
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Recurso agregado', 'success');
             renderCourseDetail();
@@ -3022,7 +2802,7 @@
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Fecha límite</label>
-                <input id="nas-date" type="date" required value="2026-11-30" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                <input id="nas-date" type="date" required value="${getSonoraISODate()}" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Puntaje máximo</label>
@@ -3049,7 +2829,7 @@
               maxPoints: Number(document.getElementById('nas-pts').value) || 100,
               instructions: document.getElementById('nas-inst').value.trim()
             });
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Tarea publicada', 'success');
             renderCourseDetail();
@@ -3096,7 +2876,7 @@
             assign.dueDate = document.getElementById('eas-date').value;
             assign.maxPoints = Number(document.getElementById('eas-pts').value) || 100;
             assign.instructions = document.getElementById('eas-inst').value.trim();
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Asignación actualizada', 'success');
             renderCourseDetail();
@@ -3123,7 +2903,7 @@
             appState.db.submissions = appState.db.submissions.filter(
               s => !(s.courseId === course.id && s.assignmentId === assignId)
             );
-            saveState();
+            saveState({ isStructural: true });
             closeModal();
             showToast('Asignación eliminada', 'info');
             renderCourseDetail();
@@ -3168,10 +2948,12 @@
             const content = document.getElementById('sub-content').value.trim();
             const link = document.getElementById('sub-link').value.trim();
             const now = getSonoraDateTime();
+            const nowTs = Date.now();
             if (existing) {
               existing.content = content;
               existing.link = link;
               existing.submittedAt = now;
+              existing.updatedAt = nowTs;
             } else {
               appState.db.submissions.push({
                 id: uid('sub'),
@@ -3181,13 +2963,14 @@
                 content,
                 link,
                 submittedAt: now,
+                updatedAt: nowTs,
                 grade: null,
                 feedback: ''
               });
             }
             saveState();
             closeModal();
-            showToast('Tarea enviada correctamente', 'success');
+            showToast('Tarea enviada y sincronizada en tiempo real', 'success');
             renderCourseDetail();
           });
         });
@@ -3223,19 +3006,186 @@
             e.preventDefault();
             sub.grade = Number(document.getElementById('gr-score').value);
             sub.feedback = document.getElementById('gr-feed').value.trim();
+            sub.updatedAt = Date.now();
             saveState();
             closeModal();
-            showToast('Calificación guardada', 'success');
+            showToast('Calificación guardada en tiempo real', 'success');
             renderAdminGrades();
           });
         });
       }
 
-      // ==================== ASISTENCIA CON CÓDIGO QR EN TIEMPO REAL ====================
-      function getTodayFormatted() {
-        const p = getSonoraParts(new Date());
-        const yy = String(p.year).slice(-2);
-        return `${p.day}.${p.month}.${yy}`;
+      // ==================== ASISTENCIA EN TIEMPO REAL (QR + MANUAL + ELIMINACIÓN) ====================
+      function deleteAttendanceRecord(courseId, dateStr, studentId) {
+        const key = `${courseId}|${dateStr}|${studentId}`;
+        appState.db.meta.deletedAttendance[key] = Date.now();
+        appState.db.attendance = (appState.db.attendance || []).filter(
+          a => !(a.courseId === courseId && a.date === dateStr && a.studentId === studentId)
+        );
+      }
+
+      function getCourseRosterForAttendance(course) {
+        const enrolledIds = new Set(course.enrolledStudentIds || []);
+        (appState.db.attendance || [])
+          .filter(a => a.courseId === course.id)
+          .forEach(a => enrolledIds.add(a.studentId));
+        return appState.db.students
+          .filter(s => enrolledIds.has(s.id))
+          .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      }
+
+      function renderAttendanceModalListsHtml(course, todayStr) {
+        const todayRecords = (appState.db.attendance || []).filter(
+          a => a.courseId === course.id && a.date === todayStr
+        );
+        const registeredByStudentId = new Map();
+        todayRecords.forEach(r => {
+          if (!registeredByStudentId.has(r.studentId)) {
+            registeredByStudentId.set(r.studentId, r);
+          }
+        });
+
+        const roster = getCourseRosterForAttendance(course);
+        const pendingStudents = roster.filter(s => !registeredByStudentId.has(s.id));
+
+        const pendingHtml =
+          pendingStudents.length === 0
+            ? `<div class="px-3 py-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs text-emerald-700 font-medium">
+                 ✓ Todos los estudiantes inscritos (${roster.length}) ya tienen asistencia hoy.
+               </div>`
+            : pendingStudents
+                .map(
+                  stu => `
+                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-50/80 border border-amber-200 text-xs">
+                  <div class="min-w-0">
+                    <span class="font-bold text-slate-900 block truncate">${esc(stu.name)}</span>
+                    <span class="text-[11px] text-slate-500">@${esc(stu.username)} · ${esc(stu.group)}</span>
+                  </div>
+                  <button type="button" data-manual-mark-stu="${esc(stu.id)}"
+                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex-shrink-0 cursor-pointer transition">
+                    + Marcar asistencia
+                  </button>
+                </div>
+              `
+                )
+                .join('');
+
+        const registeredList = Array.from(registeredByStudentId.values());
+        const registeredHtml =
+          registeredList.length === 0
+            ? '<p class="text-xs text-slate-400 py-1">Ningún estudiante ha registrado asistencia hoy todavía.</p>'
+            : registeredList
+                .map(
+                  r => `
+                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs">
+                  <div class="min-w-0">
+                    <span class="font-semibold text-slate-900">✓ ${esc(r.studentName)}</span>
+                    <span class="text-slate-500 ml-1.5">(${esc(r.time)})</span>
+                  </div>
+                  <button type="button" data-del-att-stu="${esc(r.studentId)}" data-del-att-course="${esc(course.id)}" data-del-att-date="${esc(todayStr)}"
+                    class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold flex-shrink-0 cursor-pointer transition" title="Eliminar asistencia">
+                    Eliminar
+                  </button>
+                </div>
+              `
+                )
+                .join('');
+
+        return {
+          pendingCount: pendingStudents.length,
+          registeredCount: registeredList.length,
+          html: `
+            <div class="mb-3">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-bold uppercase tracking-wide text-amber-800">Pendientes por capturar (${pendingStudents.length})</span>
+                <span class="text-[11px] text-slate-400">1 asistencia por día</span>
+              </div>
+              <div class="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
+                ${pendingHtml}
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Asistencias registradas hoy (${registeredList.length})</span>
+              </div>
+              <div class="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
+                ${registeredHtml}
+              </div>
+            </div>
+          `
+        };
+      }
+
+      function wireAttendanceModalListEvents(course, todayStr) {
+        const attList = document.getElementById('att-today-list');
+        if (!attList) return;
+
+        attList.querySelectorAll('[data-manual-mark-stu]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const stuId = btn.getAttribute('data-manual-mark-stu');
+            const stu = getStudentById(stuId);
+            if (!stu) return;
+            const key = `${course.id}|${todayStr}|${stu.id}`;
+            if (appState.db.meta.deletedAttendance[key]) {
+              delete appState.db.meta.deletedAttendance[key];
+            }
+            const already = appState.db.attendance.find(
+              a => a.courseId === course.id && a.date === todayStr && a.studentId === stu.id
+            );
+            if (already) {
+              showToast(`${stu.name} ya tiene asistencia registrada hoy`, 'info');
+              refreshOpenAttendanceModalIfVisible();
+              return;
+            }
+            appState.db.attendance.push({
+              id: uid('att'),
+              courseId: course.id,
+              courseTitle: course.title,
+              studentId: stu.id,
+              studentName: stu.name,
+              date: todayStr,
+              time: getSonoraTimeHHMM(),
+              createdAtTs: Date.now()
+            });
+            refreshOpenAttendanceModalIfVisible();
+            if (appState.activeView === 'course-detail' && appState.courseTab === 'attendance') {
+              renderCourseDetail();
+            }
+            await saveState();
+            showToast(`Asistencia manual registrada: ${stu.name}`, 'success');
+          });
+        });
+
+        attList.querySelectorAll('[data-del-att-stu]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const stuId = btn.getAttribute('data-del-att-stu');
+            const cId = btn.getAttribute('data-del-att-course');
+            const dStr = btn.getAttribute('data-del-att-date');
+            deleteAttendanceRecord(cId, dStr, stuId);
+            refreshOpenAttendanceModalIfVisible();
+            if (appState.activeView === 'course-detail' && appState.courseTab === 'attendance') {
+              renderCourseDetail();
+            }
+            await saveState();
+            showToast('Asistencia eliminada', 'info');
+          });
+        });
+      }
+
+      function refreshOpenAttendanceModalIfVisible() {
+        const attList = document.getElementById('att-today-list');
+        const courseIdAttr = attList ? attList.getAttribute('data-att-course-id') : null;
+        if (!attList || !courseIdAttr) return;
+        const course = getCourseById(courseIdAttr);
+        if (!course) return;
+        const todayStr = getTodayFormatted();
+        const rendered = renderAttendanceModalListsHtml(course, todayStr);
+        const countEl = document.getElementById('att-today-count');
+        if (countEl) {
+          countEl.textContent = `Control de Asistencia Hoy · ${rendered.registeredCount} presentes / ${rendered.pendingCount} pendientes`;
+        }
+        attList.innerHTML = rendered.html;
+        wireAttendanceModalListEvents(course, todayStr);
       }
 
       function openSelectCourseForAttendanceModal(courses) {
@@ -3277,8 +3227,8 @@
               <span>·</span>
               <span>Día ${esc(todayStr)} (Hermosillo, Sonora)</span>
             </div>
-            <div id="att-cloud-status-pill" class="mb-3 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
-              ● Base de datos de asistencia en tiempo real activa (1 asistencia diaria)
+            <div class="mb-3 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
+              ● Sincronización en tiempo real activa (1 asistencia diaria)
             </div>
             <p class="text-sm text-slate-600 mb-3 max-w-md">
               Proyecta este código QR o marca manualmente en la lista superior a los alumnos que aún no han escaneado.
@@ -3318,18 +3268,10 @@
             qrBox.innerHTML = `<div class="p-6 text-sm font-mono text-rose-600">No se pudo cargar el generador QR. Código: ${esc(manualCode)}</div>`;
           }
 
-          verifyCloudWriteAccess().then(check => {
-            const pill = document.getElementById('att-cloud-status-pill');
-            if (pill) {
-              pill.textContent = `● ${check.reason} · 1 asistencia diaria`;
-            }
-          });
-
           wireAttendanceModalListEvents(course, todayStr);
 
           document.getElementById('btn-refresh-att').addEventListener('click', async () => {
-            await syncRealtimeAttendanceCloud(false);
-            await pullFromCloud(true, true);
+            await syncNow({ silent: true, skipRender: true });
             refreshOpenAttendanceModalIfVisible();
             showToast('Lista de asistencia actualizada en tiempo real', 'info');
           });
@@ -3338,6 +3280,9 @@
 
       function openStudentAttendanceScannerModal(courseContext) {
         const student = appState.session.user;
+
+        // Sincronizar antes de abrir para reflejar eliminaciones recientes del docente
+        syncNow({ silent: true, skipRender: true });
 
         openModal('Tomar Asistencia — Escáner QR', `
           <div id="scanner-view-body" class="space-y-4">
@@ -3364,12 +3309,16 @@
             </div>
           </div>
         `, () => {
-          function processScannedPayload(rawText) {
+          let isProcessingScan = false;
+
+          async function processScannedPayload(rawText) {
+            if (isProcessingScan) return false;
             const parts = String(rawText || '').trim().split('|');
             if (parts[0] !== 'PUMA_ASISTENCIA' || parts.length < 3) {
               showToast('El código QR escaneado no corresponde a una asistencia válida.', 'error');
               return false;
             }
+            isProcessingScan = true;
             const scannedCourseId = parts[1];
             const scannedDate = parts[2];
             const scannedGistId = parts[3] ? parts[3].trim() : '';
@@ -3380,15 +3329,31 @@
               saveCloudConfig(scannedToken || currentCfg.token, scannedGistId || currentCfg.gistId);
             }
 
-            const targetCourse = getCourseById(scannedCourseId) || courseContext;
+            stopActiveQrScanner();
+            const body = document.getElementById('scanner-view-body');
+            if (body) {
+              body.innerHTML = `
+                <div class="py-8 px-4 text-center fade-in">
+                  <div class="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin mx-auto mb-4"></div>
+                  <p class="text-sm font-semibold text-slate-700">Verificando y registrando asistencia en tiempo real...</p>
+                </div>
+              `;
+            }
 
-            if (!Array.isArray(appState.db.attendance)) appState.db.attendance = [];
+            // Descargar último estado para detectar si una asistencia previa fue borrada por el docente
+            await syncNow({ silent: true, skipRender: true });
+
+            const targetCourse = getCourseById(scannedCourseId) || courseContext;
+            const key = `${scannedCourseId}|${scannedDate}|${student.id}`;
+            if (appState.db.meta.deletedAttendance[key]) {
+              delete appState.db.meta.deletedAttendance[key];
+            }
+
             const already = appState.db.attendance.find(
               a => a.courseId === scannedCourseId && a.date === scannedDate && a.studentId === student.id
             );
-            let syncPromise = Promise.resolve({ ok: true });
+
             if (!already) {
-              const nowTime = getSonoraTimeHHMM();
               appState.db.attendance.push({
                 id: uid('att'),
                 courseId: scannedCourseId,
@@ -3396,15 +3361,13 @@
                 studentId: student.id,
                 studentName: student.name,
                 date: scannedDate,
-                time: nowTime
+                time: getSonoraTimeHHMM(),
+                createdAtTs: Date.now()
               });
-              syncPromise = saveState();
-            } else {
-              syncPromise = syncRealtimeAttendanceCloud(true).then(ok => ({ ok }));
             }
 
-            stopActiveQrScanner();
-            const body = document.getElementById('scanner-view-body');
+            const res = await saveState();
+
             if (body) {
               body.innerHTML = `
                 <div class="py-6 px-4 text-center fade-in">
@@ -3417,25 +3380,15 @@
                     ${esc(student.name)}, Asistencia del dia ${esc(scannedDate)} ha sido registrada.
                   </h3>
                   ${targetCourse ? `<p class="text-xs font-semibold text-emerald-700 mb-2">Curso: ${esc(targetCourse.title)}</p>` : ''}
-                  <p id="att-cloud-sync-note" class="text-xs text-slate-500 mb-5">Subiendo asistencia en tiempo real a la nube del docente...</p>
+                  <p class="text-xs font-semibold ${res && res.ok ? 'text-emerald-600' : 'text-amber-600'} mb-5">
+                    ${res && res.ok ? '✓ Asistencia sincronizada en tiempo real con el docente (Horario Hermosillo, Sonora).' : 'Guardada localmente; se sincronizará automáticamente al recuperar señal.'}
+                  </p>
                   <button type="button" id="btn-att-done" class="px-6 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-sm font-semibold cursor-pointer">
                     Aceptar
                   </button>
                 </div>
               `;
               document.getElementById('btn-att-done').addEventListener('click', closeModal);
-              syncPromise.then(res => {
-                const noteEl = document.getElementById('att-cloud-sync-note');
-                if (noteEl) {
-                  if (res && res.ok) {
-                    noteEl.textContent = '✓ Asistencia registrada y sincronizada en tiempo real con el docente.';
-                    noteEl.className = 'text-xs font-semibold text-emerald-600 mb-5';
-                  } else {
-                    noteEl.textContent = `⚠ No se pudo subir a la nube: ${res && res.error ? res.error : 'verifica tu conexión a internet.'}`;
-                    noteEl.className = 'text-xs font-semibold text-rose-600 mb-5';
-                  }
-                }
-              });
             }
             return true;
           }
@@ -3608,7 +3561,7 @@
         });
       }
 
-      // ==================== SINCRONIZACIÓN EN LA NUBE (GITHUB GIST) ====================
+      // ==================== MODAL DE SINCRONIZACIÓN EN LA NUBE ====================
       function openCloudSyncModal() {
         const cfg = getCloudConfig();
         const isAdmin = appState.session.role === 'admin';
@@ -3616,38 +3569,38 @@
           ? `${window.location.origin}${window.location.pathname}?gist=${encodeURIComponent(cfg.gistId)}`
           : '';
 
-        openModal('Sincronización Multi-Dispositivo (Nube GitHub)', `
+        openModal('Sincronización en Tiempo Real', `
           <div class="space-y-4">
-            <p class="text-xs text-slate-600 leading-relaxed">
-              Las asistencias se sincronizan automáticamente en tiempo real en la nube compartida. Además, puedes conectar tu <strong>GitHub Gist</strong> para respaldar cursos, estudiantes y calificaciones entre dispositivos.
-            </p>
+            <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+              <strong>Estado en vivo:</strong> Toda la plataforma (cursos, secuencias, estudiantes, asistencias y entregas) se sincroniza automáticamente en tiempo real cada 2 segundos en la nube compartida.
+            </div>
             <form id="cloud-sync-form" class="space-y-3">
               ${
                 isAdmin
                   ? `<div>
-                      <label class="block text-xs font-semibold text-slate-600 mb-1">Token de GitHub (con permiso <code>gist</code>)</label>
+                      <label class="block text-xs font-semibold text-slate-600 mb-1">Token de respaldo GitHub Gist (opcional)</label>
                       <input id="cloud-token" type="password" value="${esc(cfg.token)}" placeholder="ghp_..." class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
                     </div>`
                   : ''
               }
               <div>
-                <label class="block text-xs font-semibold text-slate-600 mb-1">ID de Gist compartido</label>
-                <input id="cloud-gist-id" type="text" value="${esc(cfg.gistId)}" placeholder="Déjalo vacío para crear uno nuevo al guardar" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
+                <label class="block text-xs font-semibold text-slate-600 mb-1">ID de Espacio / Gist Compartido</label>
+                <input id="cloud-gist-id" type="text" value="${esc(cfg.gistId)}" placeholder="Identificador compartido" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
               </div>
               <div class="flex flex-wrap gap-2 pt-1">
                 ${
                   isAdmin
-                    ? `<button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer">Guardar y Subir a la Nube</button>`
+                    ? `<button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer">Guardar y Forzar Subida</button>`
                     : ''
                 }
-                <button type="button" id="btn-cloud-pull" class="px-4 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold cursor-pointer">Descargar de la Nube</button>
+                <button type="button" id="btn-cloud-pull" class="px-4 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold cursor-pointer">Sincronizar Ahora</button>
               </div>
             </form>
 
             ${
               shareUrl
                 ? `<div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                    <div class="text-[11px] font-bold text-slate-700">Enlace directo para cualquier dispositivo:</div>
+                    <div class="text-[11px] font-bold text-slate-700">Enlace directo para compartir con alumnos:</div>
                     <div class="flex items-center gap-2">
                       <input id="cloud-share-url" type="text" readonly value="${esc(shareUrl)}" class="flex-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-mono text-slate-700" />
                       <button type="button" id="btn-copy-share-url" class="px-3 py-1.5 rounded-lg bg-puma-500 text-white text-xs font-semibold cursor-pointer">Copiar</button>
@@ -3665,10 +3618,8 @@
               const token = tokenEl ? tokenEl.value.trim() : cfg.token;
               const gistId = document.getElementById('cloud-gist-id').value.trim();
               saveCloudConfig(token, gistId);
-              if (isAdmin && token) {
-                const res = await pushToCloud(false, true);
-                if (res && res.ok) openCloudSyncModal();
-              }
+              const res = await saveState({ silent: false, isStructural: true });
+              if (res && res.ok) openCloudSyncModal();
             });
           }
           document.getElementById('btn-cloud-pull').addEventListener('click', async () => {
@@ -3676,7 +3627,7 @@
             const tokenEl = document.getElementById('cloud-token');
             const token = tokenEl ? tokenEl.value.trim() : cfg.token;
             saveCloudConfig(token, gistId);
-            await pullFromCloud(false, false);
+            await syncNow({ silent: false, forceGist: true });
           });
           const copyBtn = document.getElementById('btn-copy-share-url');
           if (copyBtn) {
@@ -3694,39 +3645,31 @@
         });
       }
 
-      // Initialize: dibujar pantalla de acceso y sincronizar inmediatamente desde la nube
+      // ==================== ARRANQUE Y BUCLE EN TIEMPO REAL ====================
       renderAuth();
+
       setTimeout(async () => {
         try {
           const initialCfg = getCloudConfig();
-          if (initialCfg.token || initialCfg.gistId) {
-            saveCloudConfig(initialCfg.token, initialCfg.gistId);
-          }
-          await pullFromCloud(true, true);
+          saveCloudConfig(initialCfg.token, initialCfg.gistId);
+          await syncNow({ silent: true, forceGist: true, skipRender: true });
         } catch (e) {}
         appState.initialCloudReady = true;
         if (!appState.session && appState.authMode === 'login' && !isUserTyping()) {
           renderAuth();
         }
-      }, 60);
+      }, 50);
 
-      // Actualización automática en tiempo real cada 2 segundos y al volver a la pestaña
+      // Ciclo continuo de sincronización en tiempo real cada 2 segundos
       setInterval(() => {
         if (document.hidden) return;
-        syncRealtimeAttendanceCloud(false);
-        syncRealtimeStructureCloud(false);
-        if (!appState.cloudSyncing) {
-          pullFromCloud(true, false);
-        }
+        syncNow({ silent: true, forceGist: false, skipRender: false });
       }, 2000);
 
+      // Sincronización inmediata al regresar a la ventana o pestaña
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
-          syncRealtimeAttendanceCloud(false);
-          syncRealtimeStructureCloud(false);
-          if (!appState.cloudSyncing) {
-            pullFromCloud(true, false);
-          }
+          syncNow({ silent: true, forceGist: true, skipRender: false });
         }
       });
     })();
