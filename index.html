@@ -333,6 +333,66 @@
         }
       }
 
+      function mergeCollectionsById(remoteArr, localArr, uniqueKeyFn) {
+        const map = new Map();
+        (Array.isArray(remoteArr) ? remoteArr : []).forEach(item => {
+          const key = uniqueKeyFn ? uniqueKeyFn(item) : item.id;
+          if (key) map.set(key, item);
+        });
+        (Array.isArray(localArr) ? localArr : []).forEach(item => {
+          const key = uniqueKeyFn ? uniqueKeyFn(item) : item.id;
+          if (key) map.set(key, item);
+        });
+        return Array.from(map.values());
+      }
+
+      function mergeDatabases(remoteDb, localDb, preferLocalStructure = false) {
+        const base = preferLocalStructure ? localDb : remoteDb;
+        const other = preferLocalStructure ? remoteDb : localDb;
+        return {
+          courses: Array.isArray(base.courses) ? base.courses : other.courses || [],
+          students: mergeCollectionsById(remoteDb.students, localDb.students, s => s.id),
+          submissions: mergeCollectionsById(
+            remoteDb.submissions,
+            localDb.submissions,
+            s => `${s.courseId}|${s.assignmentId}|${s.studentId}`
+          ),
+          attendance: mergeCollectionsById(
+            remoteDb.attendance,
+            localDb.attendance,
+            a => `${a.courseId}|${a.date}|${a.studentId}`
+          )
+        };
+      }
+
+      async function fetchRemoteDatabase(cfg, gistId) {
+        let res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
+          headers: buildGitHubHeaders(cfg.token, false)
+        });
+        if (res.status === 401 || res.status === 403) {
+          res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
+            headers: { Accept: 'application/vnd.github+json' }
+          });
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const fileObj = data.files && (data.files['puma_steam_db.json'] || Object.values(data.files)[0]);
+        if (!fileObj) return null;
+        let rawContent = fileObj.content;
+        if (fileObj.truncated && fileObj.raw_url) {
+          const rawRes = await fetch(`${fileObj.raw_url}?_t=${Date.now()}`);
+          if (rawRes.ok) rawContent = await rawRes.text();
+        }
+        if (!rawContent) return null;
+        const parsed = JSON.parse(rawContent);
+        if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
+          if (!Array.isArray(parsed.attendance)) parsed.attendance = [];
+          if (!Array.isArray(parsed.submissions)) parsed.submissions = [];
+          return parsed;
+        }
+        return null;
+      }
+
       function refreshOpenAttendanceModalIfVisible() {
         const attList = document.getElementById('att-today-list');
         const courseIdAttr = attList ? attList.getAttribute('data-att-course-id') : null;
@@ -351,8 +411,8 @@
             : todayRecords
                 .map(
                   r => `
-                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs">
-                  <span class="font-semibold text-slate-900">${esc(r.studentName)}</span>
+                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs">
+                  <span class="font-semibold text-slate-900">✓ ${esc(r.studentName)}</span>
                   <span class="text-slate-500">${esc(r.time)}</span>
                 </div>
               `
@@ -370,52 +430,35 @@
           return false;
         }
         try {
-          let res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
-            headers: buildGitHubHeaders(cfg.token, false)
-          });
-          if (res.status === 401 || res.status === 403) {
-            res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
-              headers: { Accept: 'application/vnd.github+json' }
-            });
-          }
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-          }
-          const data = await res.json();
-          const fileObj = data.files && (data.files['puma_steam_db.json'] || Object.values(data.files)[0]);
-          if (fileObj && fileObj.content) {
-            const parsed = JSON.parse(fileObj.content);
-            if (parsed && Array.isArray(parsed.courses) && Array.isArray(parsed.students)) {
-              if (!Array.isArray(parsed.attendance)) parsed.attendance = [];
-              if (!Array.isArray(parsed.submissions)) parsed.submissions = [];
-              const prevJson = JSON.stringify(appState.db);
-              const nextJson = JSON.stringify(parsed);
-              appState.lastSyncTime = new Date().toTimeString().slice(0, 5);
-              if (prevJson === nextJson) {
-                if (!silent) showToast('La plataforma ya está al día', 'info');
-                updateRealtimeIndicator();
-                return false;
-              }
-              appState.db = parsed;
-              try {
-                localStorage.setItem(STORAGE_KEY, nextJson);
-              } catch (e) {}
-              if (!silent) showToast('Datos sincronizados desde la nube', 'success');
-              if (!skipRender) {
-                if (appState.session) {
-                  const modalOpen = !document.getElementById('modal-root').classList.contains('hidden');
-                  if (!modalOpen && !isUserTyping()) {
-                    renderMain();
-                  } else {
-                    refreshOpenAttendanceModalIfVisible();
-                  }
-                } else if (!isUserTyping()) {
-                  renderAuth();
-                }
-              }
+          const parsed = await fetchRemoteDatabase(cfg, gistId);
+          if (parsed) {
+            const prevJson = JSON.stringify(appState.db);
+            const nextJson = JSON.stringify(parsed);
+            appState.lastSyncTime = new Date().toTimeString().slice(0, 8);
+            if (prevJson === nextJson) {
+              if (!silent) showToast('La plataforma ya está al día', 'info');
               updateRealtimeIndicator();
-              return true;
+              return false;
             }
+            appState.db = parsed;
+            try {
+              localStorage.setItem(STORAGE_KEY, nextJson);
+            } catch (e) {}
+            if (!silent) showToast('Datos sincronizados desde la nube', 'success');
+            if (!skipRender) {
+              if (appState.session) {
+                const modalOpen = !document.getElementById('modal-root').classList.contains('hidden');
+                if (!modalOpen && !isUserTyping()) {
+                  renderMain();
+                } else {
+                  refreshOpenAttendanceModalIfVisible();
+                }
+              } else if (!isUserTyping()) {
+                renderAuth();
+              }
+            }
+            updateRealtimeIndicator();
+            return true;
           }
         } catch (e) {
           if (!silent) showToast('No se pudo cargar desde la nube. Verifica el token o conexión.', 'error');
@@ -423,7 +466,7 @@
         return false;
       }
 
-      function pushToCloud(silent = true) {
+      function pushToCloud(silent = true, mergeBeforePush = true) {
         syncLockPromise = syncLockPromise
           .then(async () => {
             const cfg = getCloudConfig();
@@ -431,6 +474,17 @@
             appState.cloudSyncing = true;
             try {
               const gistId = await resolveSharedGistId(cfg);
+              if (gistId && mergeBeforePush) {
+                try {
+                  const latestRemote = await fetchRemoteDatabase(cfg, gistId);
+                  if (latestRemote) {
+                    appState.db = mergeDatabases(latestRemote, appState.db, true);
+                    try {
+                      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
+                    } catch (e) {}
+                  }
+                } catch (e) {}
+              }
               const payload = {
                 description: 'PLATAFORMA PUMA STEAM - Base de datos sincronizada',
                 public: false,
@@ -459,8 +513,9 @@
                   saveCloudConfig(cfg.token, data.id);
                 }
               }
-              appState.lastSyncTime = new Date().toTimeString().slice(0, 5);
+              appState.lastSyncTime = new Date().toTimeString().slice(0, 8);
               updateRealtimeIndicator();
+              refreshOpenAttendanceModalIfVisible();
               if (!silent) showToast('Datos guardados en la nube de GitHub', 'success');
               return true;
             } catch (e) {
@@ -482,8 +537,9 @@
         }
         const cfg = getCloudConfig();
         if (cfg.token) {
-          pushToCloud(true);
+          return pushToCloud(true, true);
         }
+        return Promise.resolve(false);
       }
 
       function uid(prefix) {
@@ -2780,8 +2836,8 @@
                   todayRecords.length === 0
                     ? '<p class="text-xs text-slate-400">Ningún estudiante ha escaneado el código todavía.</p>'
                     : todayRecords.map(r => `
-                        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs">
-                          <span class="font-semibold text-slate-900">${esc(r.studentName)}</span>
+                        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs">
+                          <span class="font-semibold text-slate-900">✓ ${esc(r.studentName)}</span>
                           <span class="text-slate-500">${esc(r.time)}</span>
                         </div>
                       `).join('')
@@ -2855,6 +2911,7 @@
             const already = appState.db.attendance.find(
               a => a.courseId === scannedCourseId && a.date === scannedDate && a.studentId === student.id
             );
+            let syncPromise = Promise.resolve(true);
             if (!already) {
               const nowTime = new Date().toTimeString().slice(0, 5);
               appState.db.attendance.push({
@@ -2866,7 +2923,7 @@
                 date: scannedDate,
                 time: nowTime
               });
-              saveState();
+              syncPromise = saveState();
             }
 
             stopActiveQrScanner();
@@ -2882,13 +2939,25 @@
                   <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 leading-snug mb-2">
                     ${esc(student.name)}, Asistencia del dia ${esc(scannedDate)} ha sido registrada.
                   </h3>
-                  ${targetCourse ? `<p class="text-xs font-semibold text-emerald-700 mb-5">Curso: ${esc(targetCourse.title)}</p>` : '<div class="mb-5"></div>'}
+                  ${targetCourse ? `<p class="text-xs font-semibold text-emerald-700 mb-2">Curso: ${esc(targetCourse.title)}</p>` : ''}
+                  <p id="att-cloud-sync-note" class="text-xs font-semibold text-amber-600 mb-5">Sincronizando asistencia en tiempo real con el docente...</p>
                   <button type="button" id="btn-att-done" class="px-6 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-sm font-semibold cursor-pointer">
                     Aceptar
                   </button>
                 </div>
               `;
               document.getElementById('btn-att-done').addEventListener('click', closeModal);
+              syncPromise.then(ok => {
+                const noteEl = document.getElementById('att-cloud-sync-note');
+                if (noteEl) {
+                  noteEl.textContent = ok
+                    ? '✓ Asistencia sincronizada en la nube del docente.'
+                    : 'Guardada localmente (verifica conexión o token si no aparece al docente).';
+                  noteEl.className = ok
+                    ? 'text-xs font-semibold text-emerald-600 mb-5'
+                    : 'text-xs font-semibold text-amber-600 mb-5';
+                }
+              });
             }
             return true;
           }
@@ -3165,11 +3234,11 @@
         }
       })();
 
-      // Actualización automática en tiempo real cada 5 segundos y al volver a la pestaña
+      // Actualización automática en tiempo real cada 2.5 segundos y al volver a la pestaña
       setInterval(() => {
         if (document.hidden || appState.cloudSyncing) return;
         pullFromCloud(true, false);
-      }, 5000);
+      }, 2500);
 
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden && !appState.cloudSyncing) {
