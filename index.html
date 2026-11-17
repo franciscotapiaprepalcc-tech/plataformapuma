@@ -61,7 +61,7 @@
       const CLOUD_CONFIG_KEY = 'puma_steam_cloud_cfg_v1';
       // Token de GitHub (con permiso gist) y Gist ID opcional para carga pública:
       const DEFAULT_GITHUB_TOKEN = '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';
-      const DEFAULT_PUBLIC_GIST_ID = '';
+      const DEFAULT_PUBLIC_GIST_ID = 'ebb8263d448ac9b21338823ef8d53345';
       const ADMIN_USER = 'mtrofrancisco';
       const ADMIN_PASS = '37rdo2910D';
 
@@ -233,14 +233,29 @@
         return JSON.parse(JSON.stringify(DEFAULT_DATA));
       }
 
+      const appState = {
+        db: loadState(),
+        session: null,
+        authMode: 'login',
+        activeView: 'dashboard',
+        selectedCourseId: null,
+        courseTab: 'content',
+        mobileMenuOpen: false,
+        searchQuery: '',
+        calYear: new Date().getFullYear(),
+        calMonth: new Date().getMonth(),
+        calSelectedDate: new Date().toISOString().slice(0, 10),
+        cloudSyncing: false
+      };
+
       function getCloudConfig() {
         let cfg = { token: DEFAULT_GITHUB_TOKEN, gistId: DEFAULT_PUBLIC_GIST_ID };
         try {
           const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
           if (raw) {
             const parsed = JSON.parse(raw);
-            cfg.token = parsed.token || DEFAULT_GITHUB_TOKEN;
-            cfg.gistId = parsed.gistId || DEFAULT_PUBLIC_GIST_ID;
+            if (parsed.token) cfg.token = parsed.token;
+            if (parsed.gistId) cfg.gistId = parsed.gistId;
           }
         } catch (e) {}
         try {
@@ -253,18 +268,79 @@
 
       function saveCloudConfig(token, gistId) {
         try {
-          localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify({ token: token.trim(), gistId: gistId.trim() }));
+          localStorage.setItem(
+            CLOUD_CONFIG_KEY,
+            JSON.stringify({
+              token: String(token || '').trim(),
+              gistId: String(gistId || '').trim()
+            })
+          );
         } catch (e) {}
+      }
+
+      let activeGistIdMemory = DEFAULT_PUBLIC_GIST_ID;
+      let syncLockPromise = Promise.resolve();
+
+      function buildGitHubHeaders(token, hasBody = false) {
+        const headers = { Accept: 'application/vnd.github+json' };
+        const clean = String(token || '').trim();
+        if (clean) {
+          headers['Authorization'] = `token ${clean}`;
+        }
+        if (hasBody) {
+          headers['Content-Type'] = 'application/json';
+        }
+        return headers;
+      }
+
+      async function resolveSharedGistId(cfg) {
+        if (cfg.gistId) {
+          activeGistIdMemory = cfg.gistId;
+          return cfg.gistId;
+        }
+        if (activeGistIdMemory) {
+          return activeGistIdMemory;
+        }
+        if (!cfg.token) return '';
+        try {
+          const res = await fetch(`https://api.github.com/gists?per_page=50&_t=${Date.now()}`, {
+            headers: buildGitHubHeaders(cfg.token, false)
+          });
+          if (!res.ok) return '';
+          const list = await res.json();
+          if (Array.isArray(list)) {
+            const found = list.find(g => g.files && g.files['puma_steam_db.json']);
+            if (found && found.id) {
+              activeGistIdMemory = found.id;
+              cfg.gistId = found.id;
+              saveCloudConfig(cfg.token, found.id);
+              return found.id;
+            }
+          }
+        } catch (e) {}
+        return '';
       }
 
       async function pullFromCloud(silent = true) {
         const cfg = getCloudConfig();
-        if (!cfg.gistId) return false;
+        const gistId = await resolveSharedGistId(cfg);
+        if (!gistId) {
+          if (cfg.token) {
+            await pushToCloud(true);
+          }
+          return false;
+        }
         try {
-          const headers = { 'Accept': 'application/vnd.github+json' };
-          if (cfg.token) headers['Authorization'] = `Bearer ${cfg.token}`;
-          const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(cfg.gistId)}`, { headers });
-          if (!res.ok) throw new Error('Error al consultar Gist');
+          const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
+            headers: buildGitHubHeaders(cfg.token, false)
+          });
+          if (!res.ok) {
+            if (res.status === 404) {
+              activeGistIdMemory = '';
+              saveCloudConfig(cfg.token, '');
+            }
+            throw new Error(`HTTP ${res.status}`);
+          }
           const data = await res.json();
           const fileObj = data.files && (data.files['puma_steam_db.json'] || Object.values(data.files)[0]);
           if (fileObj && fileObj.content) {
@@ -280,51 +356,58 @@
             }
           }
         } catch (e) {
-          if (!silent) showToast('No se pudo cargar desde la nube. Verifica el ID o conexión.', 'error');
+          if (!silent) showToast('No se pudo cargar desde la nube. Verifica el token o conexión.', 'error');
         }
         return false;
       }
 
-      async function pushToCloud(silent = true) {
-        const cfg = getCloudConfig();
-        if (!cfg.token) return false;
-        appState.cloudSyncing = true;
-        try {
-          const payload = {
-            description: 'PLATAFORMA PUMA STEAM - Base de datos sincronizada',
-            public: false,
-            files: {
-              'puma_steam_db.json': {
-                content: JSON.stringify(appState.db, null, 2)
+      function pushToCloud(silent = true) {
+        syncLockPromise = syncLockPromise
+          .then(async () => {
+            const cfg = getCloudConfig();
+            if (!cfg.token) return false;
+            appState.cloudSyncing = true;
+            try {
+              const gistId = await resolveSharedGistId(cfg);
+              const payload = {
+                description: 'PLATAFORMA PUMA STEAM - Base de datos sincronizada',
+                public: false,
+                files: {
+                  'puma_steam_db.json': {
+                    content: JSON.stringify(appState.db, null, 2)
+                  }
+                }
+              };
+              const url = gistId
+                ? `https://api.github.com/gists/${encodeURIComponent(gistId)}`
+                : 'https://api.github.com/gists';
+              const method = gistId ? 'PATCH' : 'POST';
+              const res = await fetch(url, {
+                method,
+                headers: buildGitHubHeaders(cfg.token, true),
+                body: JSON.stringify(payload)
+              });
+              if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
               }
+              const data = await res.json();
+              if (data.id) {
+                activeGistIdMemory = data.id;
+                if (data.id !== gistId) {
+                  saveCloudConfig(cfg.token, data.id);
+                }
+              }
+              if (!silent) showToast('Datos guardados en la nube de GitHub', 'success');
+              return true;
+            } catch (e) {
+              if (!silent) showToast('Error al sincronizar con GitHub. Revisa tu token en Sincronización Nube.', 'error');
+              return false;
+            } finally {
+              appState.cloudSyncing = false;
             }
-          };
-          const url = cfg.gistId
-            ? `https://api.github.com/gists/${encodeURIComponent(cfg.gistId)}`
-            : 'https://api.github.com/gists';
-          const method = cfg.gistId ? 'PATCH' : 'POST';
-          const res = await fetch(url, {
-            method,
-            headers: {
-              'Accept': 'application/vnd.github+json',
-              'Authorization': `Bearer ${cfg.token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-          });
-          if (!res.ok) throw new Error('Error al guardar en GitHub');
-          const data = await res.json();
-          if (data.id && data.id !== cfg.gistId) {
-            saveCloudConfig(cfg.token, data.id);
-          }
-          if (!silent) showToast('Datos guardados en la nube de GitHub', 'success');
-          return true;
-        } catch (e) {
-          if (!silent) showToast('Error al sincronizar con GitHub. Revisa tu token.', 'error');
-          return false;
-        } finally {
-          appState.cloudSyncing = false;
-        }
+          })
+          .catch(() => false);
+        return syncLockPromise;
       }
 
       function saveState() {
@@ -334,25 +417,10 @@
           // Ignore storage quota / sandbox restriction
         }
         const cfg = getCloudConfig();
-        if (cfg.token && cfg.gistId) {
+        if (cfg.token) {
           pushToCloud(true);
         }
       }
-
-      const appState = {
-        db: loadState(),
-        session: null,
-        authMode: 'login',
-        activeView: 'dashboard',
-        selectedCourseId: null,
-        courseTab: 'content',
-        mobileMenuOpen: false,
-        searchQuery: '',
-        calYear: new Date().getFullYear(),
-        calMonth: new Date().getMonth(),
-        calSelectedDate: new Date().toISOString().slice(0, 10),
-        cloudSyncing: false
-      };
 
       function uid(prefix) {
         return prefix + '-' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3);
@@ -2885,8 +2953,9 @@
       function openCloudSyncModal() {
         const cfg = getCloudConfig();
         const isAdmin = appState.session.role === 'admin';
-        const shareUrl = cfg.gistId
-          ? `${window.location.origin}${window.location.pathname}?gist=${encodeURIComponent(cfg.gistId)}`
+        const effectiveGistId = cfg.gistId || activeGistIdMemory;
+        const shareUrl = effectiveGistId
+          ? `${window.location.origin}${window.location.pathname}?gist=${encodeURIComponent(effectiveGistId)}`
           : '';
 
         openModal('Sincronización Multi-Dispositivo (Nube GitHub)', `
@@ -2905,7 +2974,7 @@
               }
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">ID de Gist compartido</label>
-                <input id="cloud-gist-id" type="text" value="${esc(cfg.gistId)}" placeholder="Déjalo vacío para crear uno nuevo al guardar" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
+                <input id="cloud-gist-id" type="text" value="${esc(effectiveGistId)}" placeholder="Se detecta automáticamente al guardar" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono" />
               </div>
               <div class="flex flex-wrap gap-2 pt-1">
                 ${
@@ -2968,8 +3037,16 @@
       }
 
       // Initialize
-      pullFromCloud(true);
       renderAuth();
+      setTimeout(() => {
+        try {
+          const initialCfg = getCloudConfig();
+          if (initialCfg.token) {
+            saveCloudConfig(initialCfg.token, initialCfg.gistId);
+          }
+          pullFromCloud(true);
+        } catch (e) {}
+      }, 150);
     })();
   </script>
 </body>
