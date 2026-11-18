@@ -75,7 +75,9 @@
         return {
           year: Number(parts.year),
           month: Number(parts.month) - 1,
-          dateStr: `${parts.year}-${parts.month}-${parts.day}`, timeShort: `${parts.hour}:${parts.minute}`, timeFull: `${parts.hour}:${parts.minute}:${parts.second}`
+          dateStr: `${parts.year}-${parts.month}-${parts.day}`,
+          timeShort: `${parts.hour}:${parts.minute}`,
+          timeFull: `${parts.hour}:${parts.minute}:${parts.second}`
         };
       } catch (e) {
         const iso = dateObj.toISOString();
@@ -102,8 +104,389 @@
     }
 
     function uid(prefix = 'id') {
-      return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`; }  function esc(str) { return String(str ?? '') .replace(/&/g, '&amp;') .replace(/</g, '&lt;') .replace(/>/g, '&gt;') .replace(/"/g, '&quot;') .replace(/'/g, '&#39;'); }  // ==================== FILTRO DE ALUMNO DEMO Y CURSOS ELIMINADOS ==================== const DEMO_STUDENT_IDS = new Set(['s-demo-1', 'std-1', 'stu-demo', 'demo-1']); const DEMO_STUDENT_USERNAMES = new Set(['alumno1', 'demo', 'alumnodemo']);  function isDemoStudentRecord(stu) { if (!stu \vert{}\vert{} typeof stu !== 'object') return false; const id = String(stu.id \vert{}\vert{} '').trim().toLowerCase(); const username = String(stu.username \vert{}\vert{} '').trim().toLowerCase(); const name = String(stu.name \vert{}\vert{} '').trim().toLowerCase(); return ( DEMO_STUDENT_IDS.has(id) \vert{}\vert{} DEMO_STUDENT_USERNAMES.has(username) \vert{}\vert{} name.includes('alumno demostración') \vert{}\vert{} name.includes('alumno de demostración') \vert{}\vert{} name.includes('alumno demostracion') \vert{}\vert{} name.includes('alumno de demostracion') ); }  function loadPersistedDeletedCourses() { try { const raw = localStorage.getItem(DELETED_COURSES_KEY); if (raw) { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object') return parsed; } } catch (e) {} return {}; }  function savePersistedDeletedCourses(map) { try { localStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(map \vert{}\vert{} {})); } catch (e) {} }  // ==================== DATOS SEMILLA INICIALES ==================== const SEED_COURSES = [ { id: 'c-cultura-digital', code: 'CD-101', title: 'Cultura Digital I', category: 'Tecnología', semester: '1° Semestre', teacher: 'Mtro. Francisco J. Tapia López', description: 'Ciudadanía digital, herramientas ofimáticas avanzadas, seguridad en línea y creación de contenido multimedia.', color: 'from-blue-600 to-indigo-700', updatedAt: 1, enrolledStudentIds: [], gradingConfig: { platformWeight: 30, attendanceWeight: 10, expectedSessions: 0, updatedAt: 1 }, products: [ { id: 'prod-cd-1', title: 'Proyecto Integrador Parcial', weight: 30, description: 'Portafolio digital práctico evaluado de forma independiente.', updatedAt: 1 }, { id: 'prod-cd-2', title: 'Examen Práctico / Producto Final', weight: 30, description: 'Evaluación sumativa de competencias digitales.', updatedAt: 1 } ], productGrades: {}, announcements: [ { id: 'a-1', title: 'Bienvenida al semestre', body: 'Recuerden revisar los materiales de la Secuencia 1 y entregar su primera práctica.', date: '2026-11-10', updatedAt: 1 } ], modules: [ { id: 'm-1', title: 'Secuencia 1: Ciudadanía y Seguridad Digital', updatedAt: 1, teacherTranscript: { rawText: '', summary: '', updatedAt: 0 }, resources: [ { id: 'r-1', type: 'Lectura', title: 'Guía de Buenas Prácticas en la Red', detail: 'Documento base sobre privacidad, contraseñas seguras y huella digital.', updatedAt: 1 } ], assignments: [ { id: 't-1', title: 'Práctica 1: Mapa de Huella Digital', instructions: 'Elabora un documento identificando 5 riesgos digitales y cómo mitigarlos.', dueDate: '2026-11-22', maxPoints: 100, updatedAt: 1 } ] } ] }, { id: 'c-fisica-1', code: 'FIS-301', title: 'Física I', category: 'Ciencias Experimentales', semester: '3° Semestre', teacher: 'Mtro. Francisco J. Tapia López', description: 'Mecánica clásica, cinemática, leyes de Newton, momento de torsión y equilibrio rotacional.', color: 'from-orange-500 to-amber-600', updatedAt: 1, enrolledStudentIds: [], gradingConfig: { platformWeight: 30, attendanceWeight: 10, expectedSessions: 0, updatedAt: 1 }, products: [ { id: 'prod-fis-1', title: 'Reporte de Laboratorio de Estática', weight: 30, description: 'Práctica experimental de equilibrio y torque.', updatedAt: 1 }, { id: 'prod-fis-2', title: 'Evaluación Escrita de Problemas', weight: 30, description: 'Resolución de problemas de mecánica clásica.', updatedAt: 1 } ], productGrades: {}, announcements: [], modules: [ { id: 'm-3', title: 'Secuencia 1: Estática y Momento de Torsión', updatedAt: 1, teacherTranscript: { rawText: '', summary: '', updatedAt: 0 }, resources: [ { id: 'r-4', type: 'Formulario', title: 'Fórmulas de Torque (τ = F · d · sen θ)', detail: 'Incluye convención de signos y ejemplos resueltos.', updatedAt: 1 } ], assignments: [ { id: 't-3', title: 'Serie de Ejercicios: Palanca y Ángulos', instructions: 'Calcula el momento de torsión para una palanca de 0.60 m con fuerza de 200 N.', dueDate: '2026-11-25', maxPoints: 100, updatedAt: 1 } ] } ] }, { id: 'c-medios-digitales', code: 'MD-501', title: 'Taller de Medios Digitales', category: 'STEAM & Comunicación', semester: '5° Semestre', teacher: 'Mtro. Francisco J. Tapia López', description: 'Fotografía digital, composición, iluminación, producción audiovisual y radio educativa.', color: 'from-emerald-600 to-teal-700', updatedAt: 1, enrolledStudentIds: [], gradingConfig: { platformWeight: 30, attendanceWeight: 10, expectedSessions: 0, updatedAt: 1 }, products: [ { id: 'prod-md-1', title: 'Producción Fotográfica Original', weight: 30, description: 'Serie fotográfica evaluada en sesión presencial.', updatedAt: 1 }, { id: 'prod-md-2', title: 'Proyecto Audiovisual / Podcast', weight: 30, description: 'Guion, edición y entrega de cápsula multimedia.', updatedAt: 1 } ], productGrades: {}, announcements: [], modules: [ { id: 'm-4', title: 'Secuencia 1: Composición Fotográfica', updatedAt: 1, teacherTranscript: { rawText: '', summary: '', updatedAt: 0 }, resources: [ { id: 'r-5', type: 'Guía', title: 'Regla de los Tercios y Larga Exposición', detail: 'Parámetros básicos de apertura, velocidad de obturación e ISO.', updatedAt: 1 } ], assignments: [ { id: 't-4', title: 'Portafolio: Luz y Sombra en Cananea', instructions: 'Sube el enlace a una carpeta con 3 fotografías originales.', dueDate: '2026-12-01', maxPoints: 100, updatedAt: 1 } ] } ] } ];  const DEFAULT_DATA = { meta: { structureUpdatedAt: 1, deletedCourses: {}, deletedModules: {}, deletedResources: {}, deletedAssignments: {}, deletedAnnouncements: {}, deletedProducts: {}, deletedAttendance: {}, deletedSubmissions: {}, deletedStudents: { 's-demo-1': 9999999999999, 'std-1': 9999999999999 } }, courses: JSON.parse(JSON.stringify(SEED_COURSES)), students: [], submissions: [], attendance: [] };  // ==================== NORMALIZACIÓN Y DEPURACIÓN ==================== function normalizeCourseGrading(course) { if (!course \vert{}\vert{} typeof course !== 'object') return course; course.updatedAt = Number(course.updatedAt \vert{}\vert{} 1); const gc = course.gradingConfig && typeof course.gradingConfig === 'object' ? course.gradingConfig : {}; course.gradingConfig = { platformWeight: Number.isFinite(Number(gc.platformWeight)) ? Number(gc.platformWeight) : 30, attendanceWeight: Number.isFinite(Number(gc.attendanceWeight)) ? Number(gc.attendanceWeight) : 10, expectedSessions: Number.isFinite(Number(gc.expectedSessions)) && Number(gc.expectedSessions) >= 0 ? Number(gc.expectedSessions) : 0, updatedAt: Number(gc.updatedAt \vert{}\vert{} 1) }; if (!Array.isArray(course.products)) { course.products = [ { id: `prod-${course.id}-1`, title: 'Producto Evaluable 1', weight: 30, description: 'Evaluación independiente de secuencias.', updatedAt: 1 },
-          { id: `prod-${course.id}-2`, title: 'Producto Evaluable 2', weight: 30, description: 'Proyecto o evaluación sumativa.', updatedAt: 1 } ]; } else { course.products = course.products.map(p => ({ id: String(p.id \vert{}\vert{} uid('prod')), title: String(p.title \vert{}\vert{} 'Producto'), weight: Number.isFinite(Number(p.weight)) ? Number(p.weight) : 0, description: String(p.description \vert{}\vert{} ''), updatedAt: Number(p.updatedAt \vert{}\vert{} 1) })); } if (!course.productGrades \vert{}\vert{} typeof course.productGrades !== 'object') { course.productGrades = {}; } if (!Array.isArray(course.modules)) course.modules = []; course.modules = course.modules.map(m => { const rawTr = m.teacherTranscript && typeof m.teacherTranscript === 'object' ? m.teacherTranscript : {}; return { ...m, id: String(m.id \vert{}\vert{} uid('mod')), title: String(m.title \vert{}\vert{} 'Secuencia'), updatedAt: Number(m.updatedAt \vert{}\vert{} 1), teacherTranscript: { rawText: String(rawTr.rawText \vert{}\vert{} ''), summary: String(rawTr.summary \vert{}\vert{} ''), updatedAt: Number(rawTr.updatedAt \vert{}\vert{} 0) }, resources: Array.isArray(m.resources) ? m.resources.map(r => ({ ...r, updatedAt: Number(r.updatedAt \vert{}\vert{} 1) })) : [], assignments: Array.isArray(m.assignments) ? m.assignments.map(a => ({ ...a, updatedAt: Number(a.updatedAt \vert{}\vert{} 1) })) : [] }; }); if (!Array.isArray(course.announcements)) course.announcements = []; if (!Array.isArray(course.enrolledStudentIds)) course.enrolledStudentIds = []; return course; }  function purgeDemoAndDeletedData(dbObj) { if (!dbObj \vert{}\vert{} typeof dbObj !== 'object') return dbObj; if (!dbObj.meta \vert{}\vert{} typeof dbObj.meta !== 'object') dbObj.meta = {}; const persistedDeletedCourses = loadPersistedDeletedCourses(); dbObj.meta.deletedCourses = { ...persistedDeletedCourses, ...(dbObj.meta.deletedCourses && typeof dbObj.meta.deletedCourses === 'object' ? dbObj.meta.deletedCourses : {}) }; savePersistedDeletedCourses(dbObj.meta.deletedCourses);  if (!dbObj.meta.deletedStudents \vert{}\vert{} typeof dbObj.meta.deletedStudents !== 'object') { dbObj.meta.deletedStudents = {}; } const purgedIds = new Set(['s-demo-1', 'std-1', 'stu-demo', 'demo-1']); if (Array.isArray(dbObj.students)) { dbObj.students.forEach(s => { if (isDemoStudentRecord(s) && s.id) purgedIds.add(String(s.id)); }); dbObj.students = dbObj.students.filter(s => !isDemoStudentRecord(s) && !purgedIds.has(String(s?.id \vert{}\vert{} ''))); } purgedIds.forEach(id => { dbObj.meta.deletedStudents[id] = Math.max(Number(dbObj.meta.deletedStudents[id] \vert{}\vert{} 0), 9999999999999); });  // Filtrar cursos eliminados explícitamente if (Array.isArray(dbObj.courses)) { dbObj.courses = dbObj.courses .filter(c => { if (!c \vert{}\vert{} !c.id) return false; const delTs = Number(dbObj.meta.deletedCourses[c.id] \vert{}\vert{} 0); const itemTs = Number(c.updatedAt \vert{}\vert{} 1); return !(delTs > 0 && delTs >= itemTs); }) .map(c => { if (Array.isArray(c.enrolledStudentIds)) { c.enrolledStudentIds = c.enrolledStudentIds.filter(id => !purgedIds.has(String(id))); } return normalizeCourseGrading(c); }); }  if (Array.isArray(dbObj.submissions)) { dbObj.submissions = dbObj.submissions.filter(sub => !purgedIds.has(String(sub?.studentId \vert{}\vert{} ''))); } if (Array.isArray(dbObj.attendance)) { dbObj.attendance = dbObj.attendance.filter(att => { const sid = String(att?.studentId \vert{}\vert{} ''); const sname = String(att?.studentName \vert{}\vert{} '').toLowerCase(); return !purgedIds.has(sid) && !sname.includes('alumno demostración') && !sname.includes('alumno de demostración'); }); } return dbObj; }  function normalizeDatabase(rawDb) { const hasRaw = rawDb && typeof rawDb === 'object'; const base = hasRaw ? rawDb : JSON.parse(JSON.stringify(DEFAULT_DATA)); const meta = base.meta && typeof base.meta === 'object' ? base.meta : {}; const persistedDelCourses = loadPersistedDeletedCourses();  const normalized = { meta: { structureUpdatedAt: Number(meta.structureUpdatedAt \vert{}\vert{} base.structureUpdatedAt \vert{}\vert{} 1), deletedCourses: { ...persistedDelCourses, ...(meta.deletedCourses \vert{}\vert{} {}) }, deletedModules: meta.deletedModules && typeof meta.deletedModules === 'object' ? meta.deletedModules : {}, deletedResources: meta.deletedResources && typeof meta.deletedResources === 'object' ? meta.deletedResources : {}, deletedAssignments: meta.deletedAssignments && typeof meta.deletedAssignments === 'object' ? meta.deletedAssignments : {}, deletedAnnouncements: meta.deletedAnnouncements && typeof meta.deletedAnnouncements === 'object' ? meta.deletedAnnouncements : {}, deletedProducts: meta.deletedProducts && typeof meta.deletedProducts === 'object' ? meta.deletedProducts : {}, deletedAttendance: meta.deletedAttendance && typeof meta.deletedAttendance === 'object' ? meta.deletedAttendance : {}, deletedSubmissions: meta.deletedSubmissions && typeof meta.deletedSubmissions === 'object' ? meta.deletedSubmissions : {}, deletedStudents: meta.deletedStudents && typeof meta.deletedStudents === 'object' ? meta.deletedStudents : {} }, courses: Array.isArray(base.courses) ? base.courses.map(c => normalizeCourseGrading({ ...c })) : [], students: Array.isArray(base.students) ? base.students : [], submissions: Array.isArray(base.submissions) ? base.submissions : [], attendance: Array.isArray(base.attendance) ? base.attendance : [] }; return purgeDemoAndDeletedData(normalized); }  function loadState() { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { return normalizeDatabase(JSON.parse(raw)); } } catch (e) {} return normalizeDatabase(JSON.parse(JSON.stringify(DEFAULT_DATA))); }  // ==================== ESTADO DE LA APLICACIÓN ==================== const sonoraNow = getSonoraDateParts(); const appState = { db: loadState(), session: null, authMode: 'login', activeView: 'dashboard', selectedCourseId: null, courseTab: 'content', mobileMenuOpen: false, searchQuery: '', calYear: sonoraNow.year, calMonth: sonoraNow.month, calSelectedDate: sonoraNow.dateStr, cloudSyncing: false, initialCloudReady: false, lastSyncTime: '', lastLocalMutationTs: 0 };  // ==================== CONFIGURACIÓN Y CONEXIÓN NUBE ==================== function getCloudConfig() { let cfg = { token: DEFAULT_GITHUB_TOKEN, gistId: DEFAULT_PUBLIC_GIST_ID }; try { const raw = localStorage.getItem(CLOUD_CONFIG_KEY); if (raw) { const parsed = JSON.parse(raw); if (parsed.token) cfg.token = parsed.token; if (parsed.gistId) cfg.gistId = parsed.gistId; } } catch (e) {} try { const urlParams = new URLSearchParams(window.location.search); const urlGist = urlParams.get('gist'); if (urlGist) cfg.gistId = urlGist.trim(); } catch (e) {} return cfg; }  function saveCloudConfig(token, gistId) { try { localStorage.setItem( CLOUD_CONFIG_KEY, JSON.stringify({ token: String(token \vert{}\vert{} '').trim(), gistId: String(gistId \vert{}\vert{} '').trim() }) ); } catch (e) {} }  function getGeminiApiKey() { try { return localStorage.getItem(GEMINI_KEY_STORAGE) \vert{}\vert{} ''; } catch (e) { return ''; } }  function saveGeminiApiKey(key) { try { localStorage.setItem(GEMINI_KEY_STORAGE, String(key \vert{}\vert{} '').trim()); } catch (e) {} }  function buildGitHubHeaders(token, hasBody = false) { const headers = { Accept: 'application/vnd.github+json' }; const clean = String(token \vert{}\vert{} '').trim(); if (clean) headers['Authorization'] = `token ${clean}`;
+      return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    function esc(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // ==================== FILTRO DE ALUMNO DEMO Y CURSOS ELIMINADOS ====================
+    const DEMO_STUDENT_IDS = new Set(['s-demo-1', 'std-1', 'stu-demo', 'demo-1']);
+    const DEMO_STUDENT_USERNAMES = new Set(['alumno1', 'demo', 'alumnodemo']);
+
+    function isDemoStudentRecord(stu) {
+      if (!stu || typeof stu !== 'object') return false;
+      const id = String(stu.id || '').trim().toLowerCase();
+      const username = String(stu.username || '').trim().toLowerCase();
+      const name = String(stu.name || '').trim().toLowerCase();
+      return (
+        DEMO_STUDENT_IDS.has(id) ||
+        DEMO_STUDENT_USERNAMES.has(username) ||
+        name.includes('alumno demostración') ||
+        name.includes('alumno de demostración') ||
+        name.includes('alumno demostracion') ||
+        name.includes('alumno de demostracion')
+      );
+    }
+
+    function loadPersistedDeletedCourses() {
+      try {
+        const raw = localStorage.getItem(DELETED_COURSES_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') return parsed;
+        }
+      } catch (e) {}
+      return {};
+    }
+
+    function savePersistedDeletedCourses(map) {
+      try {
+        localStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(map || {}));
+      } catch (e) {}
+    }
+
+    // ==================== DATOS SEMILLA INICIALES ====================
+    const SEED_COURSES = [
+      {
+        id: 'c-cultura-digital',
+        code: 'CD-101',
+        title: 'Cultura Digital I',
+        category: 'Tecnología',
+        semester: '1° Semestre',
+        teacher: 'Mtro. Francisco J. Tapia López',
+        description: 'Ciudadanía digital, herramientas ofimáticas avanzadas, seguridad en línea y creación de contenido multimedia.',
+        color: 'from-blue-600 to-indigo-700',
+        updatedAt: 1,
+        enrolledStudentIds: [],
+        gradingConfig: { platformWeight: 30, attendanceWeight: 10, expectedSessions: 0, updatedAt: 1 },
+        products: [
+          { id: 'prod-cd-1', title: 'Proyecto Integrador Parcial', weight: 30, description: 'Portafolio digital práctico evaluado de forma independiente.', updatedAt: 1 },
+          { id: 'prod-cd-2', title: 'Examen Práctico / Producto Final', weight: 30, description: 'Evaluación sumativa de competencias digitales.', updatedAt: 1 }
+        ],
+        productGrades: {},
+        announcements: [
+          { id: 'a-1', title: 'Bienvenida al semestre', body: 'Recuerden revisar los materiales de la Secuencia 1 y entregar su primera práctica.', date: '2026-11-10', updatedAt: 1 }
+        ],
+        modules: [
+          {
+            id: 'm-1',
+            title: 'Secuencia 1: Ciudadanía y Seguridad Digital',
+            updatedAt: 1,
+            teacherTranscript: {
+              rawText: '',
+              summary: '',
+              updatedAt: 0
+            },
+            resources: [
+              { id: 'r-1', type: 'Lectura', title: 'Guía de Buenas Prácticas en la Red', detail: 'Documento base sobre privacidad, contraseñas seguras y huella digital.', updatedAt: 1 }
+            ],
+            assignments: [
+              { id: 't-1', title: 'Práctica 1: Mapa de Huella Digital', instructions: 'Elabora un documento identificando 5 riesgos digitales y cómo mitigarlos.', dueDate: '2026-11-22', maxPoints: 100, updatedAt: 1 }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'c-fisica-1',
+        code: 'FIS-301',
+        title: 'Física I',
+        category: 'Ciencias Experimentales',
+        semester: '3° Semestre',
+        teacher: 'Mtro. Francisco J. Tapia López',
+        description: 'Mecánica clásica, cinemática, leyes de Newton, momento de torsión y equilibrio rotacional.',
+        color: 'from-orange-500 to-amber-600',
+        updatedAt: 1,
+        enrolledStudentIds: [],
+        gradingConfig: { platformWeight: 30, attendanceWeight: 10, expectedSessions: 0, updatedAt: 1 },
+        products: [
+          { id: 'prod-fis-1', title: 'Reporte de Laboratorio de Estática', weight: 30, description: 'Práctica experimental de equilibrio y torque.', updatedAt: 1 },
+          { id: 'prod-fis-2', title: 'Evaluación Escrita de Problemas', weight: 30, description: 'Resolución de problemas de mecánica clásica.', updatedAt: 1 }
+        ],
+        productGrades: {},
+        announcements: [],
+        modules: [
+          {
+            id: 'm-3',
+            title: 'Secuencia 1: Estática y Momento de Torsión',
+            updatedAt: 1,
+            teacherTranscript: { rawText: '', summary: '', updatedAt: 0 },
+            resources: [
+              { id: 'r-4', type: 'Formulario', title: 'Fórmulas de Torque (τ = F · d · sen θ)', detail: 'Incluye convención de signos y ejemplos resueltos.', updatedAt: 1 }
+            ],
+            assignments: [
+              { id: 't-3', title: 'Serie de Ejercicios: Palanca y Ángulos', instructions: 'Calcula el momento de torsión para una palanca de 0.60 m con fuerza de 200 N.', dueDate: '2026-11-25', maxPoints: 100, updatedAt: 1 }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'c-medios-digitales',
+        code: 'MD-501',
+        title: 'Taller de Medios Digitales',
+        category: 'STEAM & Comunicación',
+        semester: '5° Semestre',
+        teacher: 'Mtro. Francisco J. Tapia López',
+        description: 'Fotografía digital, composición, iluminación, producción audiovisual y radio educativa.',
+        color: 'from-emerald-600 to-teal-700',
+        updatedAt: 1,
+        enrolledStudentIds: [],
+        gradingConfig: { platformWeight: 30, attendanceWeight: 10, expectedSessions: 0, updatedAt: 1 },
+        products: [
+          { id: 'prod-md-1', title: 'Producción Fotográfica Original', weight: 30, description: 'Serie fotográfica evaluada en sesión presencial.', updatedAt: 1 },
+          { id: 'prod-md-2', title: 'Proyecto Audiovisual / Podcast', weight: 30, description: 'Guion, edición y entrega de cápsula multimedia.', updatedAt: 1 }
+        ],
+        productGrades: {},
+        announcements: [],
+        modules: [
+          {
+            id: 'm-4',
+            title: 'Secuencia 1: Composición Fotográfica',
+            updatedAt: 1,
+            teacherTranscript: { rawText: '', summary: '', updatedAt: 0 },
+            resources: [
+              { id: 'r-5', type: 'Guía', title: 'Regla de los Tercios y Larga Exposición', detail: 'Parámetros básicos de apertura, velocidad de obturación e ISO.', updatedAt: 1 }
+            ],
+            assignments: [
+              { id: 't-4', title: 'Portafolio: Luz y Sombra en Cananea', instructions: 'Sube el enlace a una carpeta con 3 fotografías originales.', dueDate: '2026-12-01', maxPoints: 100, updatedAt: 1 }
+            ]
+          }
+        ]
+      }
+    ];
+
+    const DEFAULT_DATA = {
+      meta: {
+        structureUpdatedAt: 1,
+        deletedCourses: {},
+        deletedModules: {},
+        deletedResources: {},
+        deletedAssignments: {},
+        deletedAnnouncements: {},
+        deletedProducts: {},
+        deletedAttendance: {},
+        deletedSubmissions: {},
+        deletedStudents: { 's-demo-1': 9999999999999, 'std-1': 9999999999999 }
+      },
+      courses: JSON.parse(JSON.stringify(SEED_COURSES)),
+      students: [],
+      submissions: [],
+      attendance: []
+    };
+
+    // ==================== NORMALIZACIÓN Y DEPURACIÓN ====================
+    function normalizeCourseGrading(course) {
+      if (!course || typeof course !== 'object') return course;
+      course.updatedAt = Number(course.updatedAt || 1);
+      const gc = course.gradingConfig && typeof course.gradingConfig === 'object' ? course.gradingConfig : {};
+      course.gradingConfig = {
+        platformWeight: Number.isFinite(Number(gc.platformWeight)) ? Number(gc.platformWeight) : 30,
+        attendanceWeight: Number.isFinite(Number(gc.attendanceWeight)) ? Number(gc.attendanceWeight) : 10,
+        expectedSessions: Number.isFinite(Number(gc.expectedSessions)) && Number(gc.expectedSessions) >= 0 ? Number(gc.expectedSessions) : 0,
+        updatedAt: Number(gc.updatedAt || 1)
+      };
+      if (!Array.isArray(course.products)) {
+        course.products = [
+          { id: `prod-${course.id}-1`, title: 'Producto Evaluable 1', weight: 30, description: 'Evaluación independiente de secuencias.', updatedAt: 1 },
+          { id: `prod-${course.id}-2`, title: 'Producto Evaluable 2', weight: 30, description: 'Proyecto o evaluación sumativa.', updatedAt: 1 }
+        ];
+      } else {
+        course.products = course.products.map(p => ({
+          id: String(p.id || uid('prod')),
+          title: String(p.title || 'Producto'),
+          weight: Number.isFinite(Number(p.weight)) ? Number(p.weight) : 0,
+          description: String(p.description || ''),
+          updatedAt: Number(p.updatedAt || 1)
+        }));
+      }
+      if (!course.productGrades || typeof course.productGrades !== 'object') {
+        course.productGrades = {};
+      }
+      if (!Array.isArray(course.modules)) course.modules = [];
+      course.modules = course.modules.map(m => {
+        const rawTr = m.teacherTranscript && typeof m.teacherTranscript === 'object' ? m.teacherTranscript : {};
+        return {
+          ...m,
+          id: String(m.id || uid('mod')),
+          title: String(m.title || 'Secuencia'),
+          updatedAt: Number(m.updatedAt || 1),
+          teacherTranscript: {
+            rawText: String(rawTr.rawText || ''),
+            summary: String(rawTr.summary || ''),
+            updatedAt: Number(rawTr.updatedAt || 0)
+          },
+          resources: Array.isArray(m.resources) ? m.resources.map(r => ({ ...r, updatedAt: Number(r.updatedAt || 1) })) : [],
+          assignments: Array.isArray(m.assignments) ? m.assignments.map(a => ({ ...a, updatedAt: Number(a.updatedAt || 1) })) : []
+        };
+      });
+      if (!Array.isArray(course.announcements)) course.announcements = [];
+      if (!Array.isArray(course.enrolledStudentIds)) course.enrolledStudentIds = [];
+      return course;
+    }
+
+    function purgeDemoAndDeletedData(dbObj) {
+      if (!dbObj || typeof dbObj !== 'object') return dbObj;
+      if (!dbObj.meta || typeof dbObj.meta !== 'object') dbObj.meta = {};
+      const persistedDeletedCourses = loadPersistedDeletedCourses();
+      dbObj.meta.deletedCourses = {
+        ...persistedDeletedCourses,
+        ...(dbObj.meta.deletedCourses && typeof dbObj.meta.deletedCourses === 'object' ? dbObj.meta.deletedCourses : {})
+      };
+      savePersistedDeletedCourses(dbObj.meta.deletedCourses);
+
+      if (!dbObj.meta.deletedStudents || typeof dbObj.meta.deletedStudents !== 'object') {
+        dbObj.meta.deletedStudents = {};
+      }
+      const purgedIds = new Set(['s-demo-1', 'std-1', 'stu-demo', 'demo-1']);
+      if (Array.isArray(dbObj.students)) {
+        dbObj.students.forEach(s => {
+          if (isDemoStudentRecord(s) && s.id) purgedIds.add(String(s.id));
+        });
+        dbObj.students = dbObj.students.filter(s => !isDemoStudentRecord(s) && !purgedIds.has(String(s?.id || '')));
+      }
+      purgedIds.forEach(id => {
+        dbObj.meta.deletedStudents[id] = Math.max(Number(dbObj.meta.deletedStudents[id] || 0), 9999999999999);
+      });
+
+      // Filtrar cursos eliminados explícitamente
+      if (Array.isArray(dbObj.courses)) {
+        dbObj.courses = dbObj.courses
+          .filter(c => {
+            if (!c || !c.id) return false;
+            const delTs = Number(dbObj.meta.deletedCourses[c.id] || 0);
+            const itemTs = Number(c.updatedAt || 1);
+            return !(delTs > 0 && delTs >= itemTs);
+          })
+          .map(c => {
+            if (Array.isArray(c.enrolledStudentIds)) {
+              c.enrolledStudentIds = c.enrolledStudentIds.filter(id => !purgedIds.has(String(id)));
+            }
+            return normalizeCourseGrading(c);
+          });
+      }
+
+      if (Array.isArray(dbObj.submissions)) {
+        dbObj.submissions = dbObj.submissions.filter(sub => !purgedIds.has(String(sub?.studentId || '')));
+      }
+      if (Array.isArray(dbObj.attendance)) {
+        dbObj.attendance = dbObj.attendance.filter(att => {
+          const sid = String(att?.studentId || '');
+          const sname = String(att?.studentName || '').toLowerCase();
+          return !purgedIds.has(sid) && !sname.includes('alumno demostración') && !sname.includes('alumno de demostración');
+        });
+      }
+      return dbObj;
+    }
+
+    function normalizeDatabase(rawDb) {
+      const hasRaw = rawDb && typeof rawDb === 'object';
+      const base = hasRaw ? rawDb : JSON.parse(JSON.stringify(DEFAULT_DATA));
+      const meta = base.meta && typeof base.meta === 'object' ? base.meta : {};
+      const persistedDelCourses = loadPersistedDeletedCourses();
+
+      const normalized = {
+        meta: {
+          structureUpdatedAt: Number(meta.structureUpdatedAt || base.structureUpdatedAt || 1),
+          deletedCourses: { ...persistedDelCourses, ...(meta.deletedCourses || {}) },
+          deletedModules: meta.deletedModules && typeof meta.deletedModules === 'object' ? meta.deletedModules : {},
+          deletedResources: meta.deletedResources && typeof meta.deletedResources === 'object' ? meta.deletedResources : {},
+          deletedAssignments: meta.deletedAssignments && typeof meta.deletedAssignments === 'object' ? meta.deletedAssignments : {},
+          deletedAnnouncements: meta.deletedAnnouncements && typeof meta.deletedAnnouncements === 'object' ? meta.deletedAnnouncements : {},
+          deletedProducts: meta.deletedProducts && typeof meta.deletedProducts === 'object' ? meta.deletedProducts : {},
+          deletedAttendance: meta.deletedAttendance && typeof meta.deletedAttendance === 'object' ? meta.deletedAttendance : {},
+          deletedSubmissions: meta.deletedSubmissions && typeof meta.deletedSubmissions === 'object' ? meta.deletedSubmissions : {},
+          deletedStudents: meta.deletedStudents && typeof meta.deletedStudents === 'object' ? meta.deletedStudents : {}
+        },
+        courses: Array.isArray(base.courses) ? base.courses.map(c => normalizeCourseGrading({ ...c })) : [],
+        students: Array.isArray(base.students) ? base.students : [],
+        submissions: Array.isArray(base.submissions) ? base.submissions : [],
+        attendance: Array.isArray(base.attendance) ? base.attendance : []
+      };
+      return purgeDemoAndDeletedData(normalized);
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          return normalizeDatabase(JSON.parse(raw));
+        }
+      } catch (e) {}
+      return normalizeDatabase(JSON.parse(JSON.stringify(DEFAULT_DATA)));
+    }
+
+    // ==================== ESTADO DE LA APLICACIÓN ====================
+    const sonoraNow = getSonoraDateParts();
+    const appState = {
+      db: loadState(),
+      session: null,
+      authMode: 'login',
+      activeView: 'dashboard',
+      selectedCourseId: null,
+      courseTab: 'content',
+      mobileMenuOpen: false,
+      searchQuery: '',
+      calYear: sonoraNow.year,
+      calMonth: sonoraNow.month,
+      calSelectedDate: sonoraNow.dateStr,
+      cloudSyncing: false,
+      initialCloudReady: false,
+      lastSyncTime: '',
+      lastLocalMutationTs: 0
+    };
+
+    // ==================== CONFIGURACIÓN Y CONEXIÓN NUBE ====================
+    function getCloudConfig() {
+      let cfg = { token: DEFAULT_GITHUB_TOKEN, gistId: DEFAULT_PUBLIC_GIST_ID };
+      try {
+        const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.token) cfg.token = parsed.token;
+          if (parsed.gistId) cfg.gistId = parsed.gistId;
+        }
+      } catch (e) {}
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlGist = urlParams.get('gist');
+        if (urlGist) cfg.gistId = urlGist.trim();
+      } catch (e) {}
+      return cfg;
+    }
+
+    function saveCloudConfig(token, gistId) {
+      try {
+        localStorage.setItem(
+          CLOUD_CONFIG_KEY,
+          JSON.stringify({ token: String(token || '').trim(), gistId: String(gistId || '').trim() })
+        );
+      } catch (e) {}
+    }
+
+    function getGeminiApiKey() {
+      try {
+        return localStorage.getItem(GEMINI_KEY_STORAGE) || '';
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function saveGeminiApiKey(key) {
+      try {
+        localStorage.setItem(GEMINI_KEY_STORAGE, String(key || '').trim());
+      } catch (e) {}
+    }
+
+    function buildGitHubHeaders(token, hasBody = false) {
+      const headers = { Accept: 'application/vnd.github+json' };
+      const clean = String(token || '').trim();
+      if (clean) headers['Authorization'] = `token ${clean}`;
       if (hasBody) headers['Content-Type'] = 'application/json';
       return headers;
     }
@@ -111,12 +494,237 @@
     function getKvdbMasterKey() {
       const cfg = getCloudConfig();
       const cleanId = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_default').replace(/[^a-zA-Z0-9_-]/g, '');
-      return `puma_master_v2_${cleanId}`; }  async function fetchWithTimeout(url, options = {}, timeoutMs = 3500) { const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs); try { return await fetch(url, { ...options, signal: ctrl.signal }); } finally { clearTimeout(timer); } }  // ==================== MOTOR DE FUSIÓN EN TIEMPO REAL ==================== function mergeTimestampMaps(mapA = {}, mapB = {}) { const out = { ...(mapA \vert{}\vert{} {}) }; Object.entries(mapB \vert{}\vert{} {}).forEach(([k, v]) => { const ts = Number(v \vert{}\vert{} 0); if (ts > Number(out[k] \vert{}\vert{} 0)) out[k] = ts; }); return out; }  function getAttendanceKey(att) { if (!att) return ''; return `${att.courseId}|${att.date}\vert{}${att.studentId}`;
+      return `puma_master_v2_${cleanId}`;
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 3500) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: ctrl.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    // ==================== MOTOR DE FUSIÓN EN TIEMPO REAL ====================
+    function mergeTimestampMaps(mapA = {}, mapB = {}) {
+      const out = { ...(mapA || {}) };
+      Object.entries(mapB || {}).forEach(([k, v]) => {
+        const ts = Number(v || 0);
+        if (ts > Number(out[k] || 0)) out[k] = ts;
+      });
+      return out;
+    }
+
+    function getAttendanceKey(att) {
+      if (!att) return '';
+      return `${att.courseId}|${att.date}|${att.studentId}`;
     }
 
     function getSubmissionKey(sub) {
       if (!sub) return '';
-      return `${sub.courseId}\vert{}${sub.assignmentId}|${sub.studentId}`; }  function mergeOrderedCollectionById(remoteArr = [], localArr = [], deletedMap = {}, preferLocalOrder = true) { const primary = preferLocalOrder ? localArr : remoteArr; const secondary = preferLocalOrder ? remoteArr : localArr; const itemMap = new Map();  [...(secondary \vert{}\vert{} []), ...(primary \vert{}\vert{} [])].forEach(item => { if (!item \vert{}\vert{} !item.id) return; const delTs = Number(deletedMap[item.id] \vert{}\vert{} 0); const itemTs = Number(item.updatedAt \vert{}\vert{} 1); if (delTs > 0 && delTs >= itemTs) return; const existing = itemMap.get(item.id); if (!existing \vert{}\vert{} itemTs >= Number(existing.updatedAt \vert{}\vert{} 1)) { itemMap.set(item.id, JSON.parse(JSON.stringify(item))); } });  const orderedIds = []; const seen = new Set(); [...(primary \vert{}\vert{} []), ...(secondary \vert{}\vert{} [])].forEach(item => { if (item && item.id && itemMap.has(item.id) && !seen.has(item.id)) { seen.add(item.id); orderedIds.push(item.id); } }); return orderedIds.map(id => itemMap.get(id)); }  function mergeCourseModulesGranular(remoteModules = [], localModules = [], metaDeleted = {}, preferLocalOrder = true) { const baseMerged = mergeOrderedCollectionById(remoteModules, localModules, metaDeleted.deletedModules \vert{}\vert{} {}, preferLocalOrder); const rMap = new Map((remoteModules \vert{}\vert{} []).map(m => [m.id, m])); const lMap = new Map((localModules \vert{}\vert{} []).map(m => [m.id, m]));  return baseMerged.map(mod => { const rMod = rMap.get(mod.id) \vert{}\vert{} {}; const lMod = lMap.get(mod.id) \vert{}\vert{} {}; const rTr = rMod.teacherTranscript \vert{}\vert{} {}; const lTr = lMod.teacherTranscript \vert{}\vert{} {}; const chosenTranscript = Number(lTr.updatedAt \vert{}\vert{} 0) >= Number(rTr.updatedAt \vert{}\vert{} 0) ? lTr : rTr;  return { ...mod, teacherTranscript: { rawText: String(chosenTranscript.rawText \vert{}\vert{} ''), summary: String(chosenTranscript.summary \vert{}\vert{} ''), updatedAt: Number(chosenTranscript.updatedAt \vert{}\vert{} 0) }, resources: mergeOrderedCollectionById(rMod.resources \vert{}\vert{} [], lMod.resources \vert{}\vert{} [], metaDeleted.deletedResources \vert{}\vert{} {}, preferLocalOrder), assignments: mergeOrderedCollectionById(rMod.assignments \vert{}\vert{} [], lMod.assignments \vert{}\vert{} [], metaDeleted.deletedAssignments \vert{}\vert{} {}, preferLocalOrder) }; }); }  function mergeDatabases(remoteRaw, localRaw) { const remote = normalizeDatabase(remoteRaw); const local = normalizeDatabase(localRaw);  const mergedDeletedCourses = mergeTimestampMaps( loadPersistedDeletedCourses(), mergeTimestampMaps(remote.meta.deletedCourses, local.meta.deletedCourses) ); savePersistedDeletedCourses(mergedDeletedCourses);  const mergedDeletedModules = mergeTimestampMaps(remote.meta.deletedModules, local.meta.deletedModules); const mergedDeletedResources = mergeTimestampMaps(remote.meta.deletedResources, local.meta.deletedResources); const mergedDeletedAssignments = mergeTimestampMaps(remote.meta.deletedAssignments, local.meta.deletedAssignments); const mergedDeletedAnnouncements = mergeTimestampMaps(remote.meta.deletedAnnouncements, local.meta.deletedAnnouncements); const mergedDeletedProducts = mergeTimestampMaps(remote.meta.deletedProducts, local.meta.deletedProducts); const mergedDeletedAttendance = mergeTimestampMaps(remote.meta.deletedAttendance, local.meta.deletedAttendance); const mergedDeletedSubmissions = mergeTimestampMaps(remote.meta.deletedSubmissions, local.meta.deletedSubmissions); const mergedDeletedStudents = mergeTimestampMaps(remote.meta.deletedStudents, local.meta.deletedStudents);  const preferLocal = local.meta.structureUpdatedAt >= remote.meta.structureUpdatedAt; const metaDelBundle = { deletedModules: mergedDeletedModules, deletedResources: mergedDeletedResources, deletedAssignments: mergedDeletedAssignments };  const baseCourses = mergeOrderedCollectionById(remote.courses, local.courses, mergedDeletedCourses, preferLocal); const rCourseMap = new Map((remote.courses \vert{}\vert{} []).map(c => [c.id, c])); const lCourseMap = new Map((local.courses \vert{}\vert{} []).map(c => [c.id, c]));  const chosenCourses = baseCourses.map(course => { const rCourse = rCourseMap.get(course.id) \vert{}\vert{} {}; const lCourse = lCourseMap.get(course.id) \vert{}\vert{} {}; const enrolledSet = new Set([ ...(Array.isArray(rCourse.enrolledStudentIds) ? rCourse.enrolledStudentIds : []), ...(Array.isArray(lCourse.enrolledStudentIds) ? lCourse.enrolledStudentIds : []) ]);  const rGc = rCourse.gradingConfig \vert{}\vert{} {}; const lGc = lCourse.gradingConfig \vert{}\vert{} {}; const chosenGc = Number(lGc.updatedAt \vert{}\vert{} 1) >= Number(rGc.updatedAt \vert{}\vert{} 1) ? lGc : rGc;  const mergedProducts = mergeOrderedCollectionById(rCourse.products \vert{}\vert{} [], lCourse.products \vert{}\vert{} [], mergedDeletedProducts, preferLocal); const mergedAnnouncements = mergeOrderedCollectionById(rCourse.announcements \vert{}\vert{} [], lCourse.announcements \vert{}\vert{} [], mergedDeletedAnnouncements, preferLocal); const mergedModules = mergeCourseModulesGranular(rCourse.modules \vert{}\vert{} [], lCourse.modules \vert{}\vert{} [], metaDelBundle, preferLocal);  const mergedProdGrades = {}; const allProdIds = new Set([ ...Object.keys(rCourse.productGrades \vert{}\vert{} {}), ...Object.keys(lCourse.productGrades \vert{}\vert{} {}) ]); allProdIds.forEach(pid => { mergedProdGrades[pid] = {}; const rG = (rCourse.productGrades && rCourse.productGrades[pid]) \vert{}\vert{} {}; const lG = (lCourse.productGrades && lCourse.productGrades[pid]) \vert{}\vert{} {}; new Set([...Object.keys(rG), ...Object.keys(lG)]).forEach(sid => { if (mergedDeletedStudents[sid]) return; const rE = rG[sid]; const lE = lG[sid]; const rO = rE && typeof rE === 'object' ? rE : (rE !== undefined ? { score: Number(rE), updatedAt: 1 } : null); const lO = lE && typeof lE === 'object' ? lE : (lE !== undefined ? { score: Number(lE), updatedAt: 1 } : null); if (rO && lO) { mergedProdGrades[pid][sid] = Number(lO.updatedAt \vert{}\vert{} 0) >= Number(rO.updatedAt \vert{}\vert{} 0) ? lO : rO; } else { mergedProdGrades[pid][sid] = lO \vert{}\vert{} rO; } }); });  return normalizeCourseGrading({ ...course, enrolledStudentIds: Array.from(enrolledSet).filter(id => !mergedDeletedStudents[id]), gradingConfig: chosenGc, products: mergedProducts, productGrades: mergedProdGrades, announcements: mergedAnnouncements, modules: mergedModules }); });  // Estudiantes const stuMap = new Map(); [...remote.students, ...local.students].forEach(stu => { if (!stu \vert{}\vert{} !stu.id \vert{}\vert{} isDemoStudentRecord(stu)) return; const delTs = Number(mergedDeletedStudents[stu.id] \vert{}\vert{} 0); const itemTs = Number(stu.updatedAt \vert{}\vert{} 1); if (delTs > itemTs) return; const prev = stuMap.get(stu.id); if (!prev \vert{}\vert{} itemTs >= Number(prev.updatedAt \vert{}\vert{} 0)) stuMap.set(stu.id, stu); });  // Entregas const subMap = new Map(); [...remote.submissions, ...local.submissions].forEach(sub => { if (!sub \vert{}\vert{} !sub.courseId \vert{}\vert{} !sub.assignmentId \vert{}\vert{} !sub.studentId) return; if (mergedDeletedCourses[sub.courseId]) return; const key = getSubmissionKey(sub); const delTs = Number(mergedDeletedSubmissions[key] \vert{}\vert{} 0); const itemTs = Number(sub.updatedAt \vert{}\vert{} 1); if (delTs > itemTs) return; const prev = subMap.get(key); if (!prev \vert{}\vert{} itemTs >= Number(prev.updatedAt \vert{}\vert{} 0)) subMap.set(key, sub); });  // Asistencias por materia (courseId\vert{}date\vert{}studentId) const attMap = new Map(); [...remote.attendance, ...local.attendance].forEach(att => { if (!att \vert{}\vert{} !att.courseId \vert{}\vert{} !att.date \vert{}\vert{} !att.studentId) return; if (mergedDeletedCourses[att.courseId]) return; const cleanStudentId = String(att.studentId).trim(); if (!cleanStudentId \vert{}\vert{} cleanStudentId === 'admin' \vert{}\vert{} DEMO_STUDENT_IDS.has(cleanStudentId)) return; const key = getAttendanceKey(att); const delTs = Number(mergedDeletedAttendance[key] \vert{}\vert{} 0); const itemTs = Number(att.createdAtTs \vert{}\vert{} 1); if (delTs >= itemTs) return; const prev = attMap.get(key); if (!prev \vert{}\vert{} itemTs >= Number(prev.createdAtTs \vert{}\vert{} 0)) { attMap.set(key, { ...att, studentId: cleanStudentId }); } });  return purgeDemoAndDeletedData({ meta: { structureUpdatedAt: Math.max(remote.meta.structureUpdatedAt, local.meta.structureUpdatedAt), deletedCourses: mergedDeletedCourses, deletedModules: mergedDeletedModules, deletedResources: mergedDeletedResources, deletedAssignments: mergedDeletedAssignments, deletedAnnouncements: mergedDeletedAnnouncements, deletedProducts: mergedDeletedProducts, deletedAttendance: mergedDeletedAttendance, deletedSubmissions: mergedDeletedSubmissions, deletedStudents: mergedDeletedStudents }, courses: chosenCourses, students: Array.from(stuMap.values()), submissions: Array.from(subMap.values()), attendance: Array.from(attMap.values()) }); }  // ==================== SINCRONIZACIÓN KVDB + GITHUB GIST ==================== async function fetchKvdbMaster() { try { const key = getKvdbMasterKey(); const res = await fetchWithTimeout(`${REALTIME_ATT_API}/${encodeURIComponent(key)}?_t=${Date.now()}`, {
+      return `${sub.courseId}|${sub.assignmentId}|${sub.studentId}`;
+    }
+
+    function mergeOrderedCollectionById(remoteArr = [], localArr = [], deletedMap = {}, preferLocalOrder = true) {
+      const primary = preferLocalOrder ? localArr : remoteArr;
+      const secondary = preferLocalOrder ? remoteArr : localArr;
+      const itemMap = new Map();
+
+      [...(secondary || []), ...(primary || [])].forEach(item => {
+        if (!item || !item.id) return;
+        const delTs = Number(deletedMap[item.id] || 0);
+        const itemTs = Number(item.updatedAt || 1);
+        if (delTs > 0 && delTs >= itemTs) return;
+        const existing = itemMap.get(item.id);
+        if (!existing || itemTs >= Number(existing.updatedAt || 1)) {
+          itemMap.set(item.id, JSON.parse(JSON.stringify(item)));
+        }
+      });
+
+      const orderedIds = [];
+      const seen = new Set();
+      [...(primary || []), ...(secondary || [])].forEach(item => {
+        if (item && item.id && itemMap.has(item.id) && !seen.has(item.id)) {
+          seen.add(item.id);
+          orderedIds.push(item.id);
+        }
+      });
+      return orderedIds.map(id => itemMap.get(id));
+    }
+
+    function mergeCourseModulesGranular(remoteModules = [], localModules = [], metaDeleted = {}, preferLocalOrder = true) {
+      const baseMerged = mergeOrderedCollectionById(remoteModules, localModules, metaDeleted.deletedModules || {}, preferLocalOrder);
+      const rMap = new Map((remoteModules || []).map(m => [m.id, m]));
+      const lMap = new Map((localModules || []).map(m => [m.id, m]));
+
+      return baseMerged.map(mod => {
+        const rMod = rMap.get(mod.id) || {};
+        const lMod = lMap.get(mod.id) || {};
+        const rTr = rMod.teacherTranscript || {};
+        const lTr = lMod.teacherTranscript || {};
+        const chosenTranscript = Number(lTr.updatedAt || 0) >= Number(rTr.updatedAt || 0) ? lTr : rTr;
+
+        return {
+          ...mod,
+          teacherTranscript: {
+            rawText: String(chosenTranscript.rawText || ''),
+            summary: String(chosenTranscript.summary || ''),
+            updatedAt: Number(chosenTranscript.updatedAt || 0)
+          },
+          resources: mergeOrderedCollectionById(rMod.resources || [], lMod.resources || [], metaDeleted.deletedResources || {}, preferLocalOrder),
+          assignments: mergeOrderedCollectionById(rMod.assignments || [], lMod.assignments || [], metaDeleted.deletedAssignments || {}, preferLocalOrder)
+        };
+      });
+    }
+
+    function mergeDatabases(remoteRaw, localRaw) {
+      const remote = normalizeDatabase(remoteRaw);
+      const local = normalizeDatabase(localRaw);
+
+      const mergedDeletedCourses = mergeTimestampMaps(
+        loadPersistedDeletedCourses(),
+        mergeTimestampMaps(remote.meta.deletedCourses, local.meta.deletedCourses)
+      );
+      savePersistedDeletedCourses(mergedDeletedCourses);
+
+      const mergedDeletedModules = mergeTimestampMaps(remote.meta.deletedModules, local.meta.deletedModules);
+      const mergedDeletedResources = mergeTimestampMaps(remote.meta.deletedResources, local.meta.deletedResources);
+      const mergedDeletedAssignments = mergeTimestampMaps(remote.meta.deletedAssignments, local.meta.deletedAssignments);
+      const mergedDeletedAnnouncements = mergeTimestampMaps(remote.meta.deletedAnnouncements, local.meta.deletedAnnouncements);
+      const mergedDeletedProducts = mergeTimestampMaps(remote.meta.deletedProducts, local.meta.deletedProducts);
+      const mergedDeletedAttendance = mergeTimestampMaps(remote.meta.deletedAttendance, local.meta.deletedAttendance);
+      const mergedDeletedSubmissions = mergeTimestampMaps(remote.meta.deletedSubmissions, local.meta.deletedSubmissions);
+      const mergedDeletedStudents = mergeTimestampMaps(remote.meta.deletedStudents, local.meta.deletedStudents);
+
+      const preferLocal = local.meta.structureUpdatedAt >= remote.meta.structureUpdatedAt;
+      const metaDelBundle = {
+        deletedModules: mergedDeletedModules,
+        deletedResources: mergedDeletedResources,
+        deletedAssignments: mergedDeletedAssignments
+      };
+
+      const baseCourses = mergeOrderedCollectionById(remote.courses, local.courses, mergedDeletedCourses, preferLocal);
+      const rCourseMap = new Map((remote.courses || []).map(c => [c.id, c]));
+      const lCourseMap = new Map((local.courses || []).map(c => [c.id, c]));
+
+      const chosenCourses = baseCourses.map(course => {
+        const rCourse = rCourseMap.get(course.id) || {};
+        const lCourse = lCourseMap.get(course.id) || {};
+        const enrolledSet = new Set([
+          ...(Array.isArray(rCourse.enrolledStudentIds) ? rCourse.enrolledStudentIds : []),
+          ...(Array.isArray(lCourse.enrolledStudentIds) ? lCourse.enrolledStudentIds : [])
+        ]);
+
+        const rGc = rCourse.gradingConfig || {};
+        const lGc = lCourse.gradingConfig || {};
+        const chosenGc = Number(lGc.updatedAt || 1) >= Number(rGc.updatedAt || 1) ? lGc : rGc;
+
+        const mergedProducts = mergeOrderedCollectionById(rCourse.products || [], lCourse.products || [], mergedDeletedProducts, preferLocal);
+        const mergedAnnouncements = mergeOrderedCollectionById(rCourse.announcements || [], lCourse.announcements || [], mergedDeletedAnnouncements, preferLocal);
+        const mergedModules = mergeCourseModulesGranular(rCourse.modules || [], lCourse.modules || [], metaDelBundle, preferLocal);
+
+        const mergedProdGrades = {};
+        const allProdIds = new Set([
+          ...Object.keys(rCourse.productGrades || {}),
+          ...Object.keys(lCourse.productGrades || {})
+        ]);
+        allProdIds.forEach(pid => {
+          mergedProdGrades[pid] = {};
+          const rG = (rCourse.productGrades && rCourse.productGrades[pid]) || {};
+          const lG = (lCourse.productGrades && lCourse.productGrades[pid]) || {};
+          new Set([...Object.keys(rG), ...Object.keys(lG)]).forEach(sid => {
+            if (mergedDeletedStudents[sid]) return;
+            const rE = rG[sid];
+            const lE = lG[sid];
+            const rO = rE && typeof rE === 'object' ? rE : (rE !== undefined ? { score: Number(rE), updatedAt: 1 } : null);
+            const lO = lE && typeof lE === 'object' ? lE : (lE !== undefined ? { score: Number(lE), updatedAt: 1 } : null);
+            if (rO && lO) {
+              mergedProdGrades[pid][sid] = Number(lO.updatedAt || 0) >= Number(rO.updatedAt || 0) ? lO : rO;
+            } else {
+              mergedProdGrades[pid][sid] = lO || rO;
+            }
+          });
+        });
+
+        return normalizeCourseGrading({
+          ...course,
+          enrolledStudentIds: Array.from(enrolledSet).filter(id => !mergedDeletedStudents[id]),
+          gradingConfig: chosenGc,
+          products: mergedProducts,
+          productGrades: mergedProdGrades,
+          announcements: mergedAnnouncements,
+          modules: mergedModules
+        });
+      });
+
+      // Estudiantes
+      const stuMap = new Map();
+      [...remote.students, ...local.students].forEach(stu => {
+        if (!stu || !stu.id || isDemoStudentRecord(stu)) return;
+        const delTs = Number(mergedDeletedStudents[stu.id] || 0);
+        const itemTs = Number(stu.updatedAt || 1);
+        if (delTs > itemTs) return;
+        const prev = stuMap.get(stu.id);
+        if (!prev || itemTs >= Number(prev.updatedAt || 0)) stuMap.set(stu.id, stu);
+      });
+
+      // Entregas
+      const subMap = new Map();
+      [...remote.submissions, ...local.submissions].forEach(sub => {
+        if (!sub || !sub.courseId || !sub.assignmentId || !sub.studentId) return;
+        if (mergedDeletedCourses[sub.courseId]) return;
+        const key = getSubmissionKey(sub);
+        const delTs = Number(mergedDeletedSubmissions[key] || 0);
+        const itemTs = Number(sub.updatedAt || 1);
+        if (delTs > itemTs) return;
+        const prev = subMap.get(key);
+        if (!prev || itemTs >= Number(prev.updatedAt || 0)) subMap.set(key, sub);
+      });
+
+      // Asistencias por materia (courseId|date|studentId)
+      const attMap = new Map();
+      [...remote.attendance, ...local.attendance].forEach(att => {
+        if (!att || !att.courseId || !att.date || !att.studentId) return;
+        if (mergedDeletedCourses[att.courseId]) return;
+        const cleanStudentId = String(att.studentId).trim();
+        if (!cleanStudentId || cleanStudentId === 'admin' || DEMO_STUDENT_IDS.has(cleanStudentId)) return;
+        const key = getAttendanceKey(att);
+        const delTs = Number(mergedDeletedAttendance[key] || 0);
+        const itemTs = Number(att.createdAtTs || 1);
+        if (delTs >= itemTs) return;
+        const prev = attMap.get(key);
+        if (!prev || itemTs >= Number(prev.createdAtTs || 0)) {
+          attMap.set(key, { ...att, studentId: cleanStudentId });
+        }
+      });
+
+      return purgeDemoAndDeletedData({
+        meta: {
+          structureUpdatedAt: Math.max(remote.meta.structureUpdatedAt, local.meta.structureUpdatedAt),
+          deletedCourses: mergedDeletedCourses,
+          deletedModules: mergedDeletedModules,
+          deletedResources: mergedDeletedResources,
+          deletedAssignments: mergedDeletedAssignments,
+          deletedAnnouncements: mergedDeletedAnnouncements,
+          deletedProducts: mergedDeletedProducts,
+          deletedAttendance: mergedDeletedAttendance,
+          deletedSubmissions: mergedDeletedSubmissions,
+          deletedStudents: mergedDeletedStudents
+        },
+        courses: chosenCourses,
+        students: Array.from(stuMap.values()),
+        submissions: Array.from(subMap.values()),
+        attendance: Array.from(attMap.values())
+      });
+    }
+
+    // ==================== SINCRONIZACIÓN KVDB + GITHUB GIST ====================
+    async function fetchKvdbMaster() {
+      try {
+        const key = getKvdbMasterKey();
+        const res = await fetchWithTimeout(`${REALTIME_ATT_API}/${encodeURIComponent(key)}?_t=${Date.now()}`, {
           headers: { Accept: 'application/json' }
         });
         if (!res.ok) return null;
@@ -168,4 +776,1973 @@
       if (!cfg.token) return false;
       const gistId = cfg.gistId || DEFAULT_PUBLIC_GIST_ID;
       try {
-        const res = await fetchWithTimeout(`
+        const res = await fetchWithTimeout(`https://api.github.com/gists/${encodeURIComponent(gistId)}`, {
+          method: 'PATCH',
+          headers: buildGitHubHeaders(cfg.token, true),
+          body: JSON.stringify({
+            description: 'PLATAFORMA PUMA STEAM - Base de datos sincronizada en tiempo real',
+            files: { 'puma_steam_db.json': { content: JSON.stringify(dbPayload, null, 2) } }
+          })
+        });
+        return res.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    let syncLockPromise = Promise.resolve({ ok: true });
+
+    function isUserTyping() {
+      const active = document.activeElement;
+      if (!active) return false;
+      const tag = active.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable;
+    }
+
+    function updateRealtimeIndicator() {
+      const badge = document.getElementById('realtime-sync-badge');
+      if (badge) {
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot inline-block mr-1.5"></span>En vivo${appState.lastSyncTime ? ' · ' + esc(appState.lastSyncTime) : ''}`;
+      }
+    }
+
+    function syncNow({ push = false, silent = true, forceRender = false } = {}) {
+      syncLockPromise = syncLockPromise
+        .then(async () => {
+          appState.cloudSyncing = true;
+          try {
+            const beforeJson = JSON.stringify(appState.db);
+            const [kvRemote, gistRemote] = await Promise.all([fetchKvdbMaster(), fetchGistMaster()]);
+            let working = appState.db;
+            if (gistRemote) working = mergeDatabases(gistRemote, working);
+            if (kvRemote) working = mergeDatabases(kvRemote, working);
+
+            appState.db = working;
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
+            } catch (e) {}
+
+            let pushOk = true;
+            const afterJson = JSON.stringify(appState.db);
+            const changed = beforeJson !== afterJson;
+
+            if (push || changed) {
+              const [kvOk, gistOk] = await Promise.all([
+                pushKvdbMaster(appState.db),
+                pushGistMaster(appState.db)
+              ]);
+              pushOk = Boolean(kvOk || gistOk);
+            }
+
+            appState.lastSyncTime = getNowTimeFull();
+            appState.initialCloudReady = true;
+            updateRealtimeIndicator();
+
+            if (changed || forceRender) {
+              refreshActiveViewSafely();
+            }
+            if (!silent && push) {
+              showToast('Sincronizado en tiempo real con la nube', 'success');
+            }
+            return { ok: pushOk, changed };
+          } catch (e) {
+            return { ok: false, error: e?.message || 'Error de red' };
+          } finally {
+            appState.cloudSyncing = false;
+          }
+        })
+        .catch(() => ({ ok: false }));
+      return syncLockPromise;
+    }
+
+    function touchStructureVersion() {
+      const now = Date.now();
+      appState.lastLocalMutationTs = now;
+      appState.db.meta.structureUpdatedAt = Math.max(now, Number(appState.db.meta.structureUpdatedAt || 0) + 1);
+    }
+
+    function saveState(touchStructure = false) {
+      if (touchStructure) touchStructureVersion();
+      purgeDemoAndDeletedData(appState.db);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
+      } catch (e) {}
+      return syncNow({ push: true, silent: true, forceRender: false });
+    }
+
+    // ==================== FUNCIONES DE CONSULTA Y EVALUACIÓN ====================
+    function getCourseById(courseId) {
+      return (appState.db.courses || []).find(c => c.id === courseId) || null;
+    }
+
+    function getStudentById(studentId) {
+      return (appState.db.students || []).find(s => s.id === studentId) || null;
+    }
+
+    function getSubmission(courseId, assignmentId, studentId) {
+      return (appState.db.submissions || []).find(
+        s => s.courseId === courseId && s.assignmentId === assignmentId && s.studentId === studentId
+      ) || null;
+    }
+
+    function getProductScoreValue(course, productId, studentId) {
+      if (!course || !course.productGrades || !course.productGrades[productId]) return null;
+      const entry = course.productGrades[productId][studentId];
+      if (entry === null || entry === undefined || entry === '') return null;
+      if (typeof entry === 'object') {
+        if (entry.score === null || entry.score === undefined || entry.score === '') return null;
+        const n = Number(entry.score);
+        return Number.isFinite(n) ? n : null;
+      }
+      const n = Number(entry);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function setProductScoreValue(course, productId, studentId, rawScore) {
+      if (!course.productGrades || typeof course.productGrades !== 'object') course.productGrades = {};
+      if (!course.productGrades[productId] || typeof course.productGrades[productId] !== 'object') {
+        course.productGrades[productId] = {};
+      }
+      if (rawScore === '' || rawScore === null || rawScore === undefined) {
+        course.productGrades[productId][studentId] = { score: null, updatedAt: Date.now() };
+        return;
+      }
+      const clamped = Math.max(0, Math.min(100, Number(rawScore)));
+      course.productGrades[productId][studentId] = {
+        score: Number.isFinite(clamped) ? Math.round(clamped * 10) / 10 : null,
+        updatedAt: Date.now()
+      };
+    }
+
+    function calculateStudentCourseEvaluation(course, studentId) {
+      normalizeCourseGrading(course);
+      const cfg = course.gradingConfig;
+      const products = Array.isArray(course.products) ? course.products : [];
+
+      const allAssignments = [];
+      (course.modules || []).forEach(m => {
+        (m.assignments || []).forEach(a => allAssignments.push(a));
+      });
+
+      let platformAvg = 0;
+      let gradedAssignmentsCount = 0;
+      if (allAssignments.length > 0) {
+        let sumNormalized = 0;
+        allAssignments.forEach(a => {
+          const sub = getSubmission(course.id, a.id, studentId);
+          if (sub && sub.grade !== null && sub.grade !== undefined && sub.grade !== '') {
+            const maxPts = Number(a.maxPoints) > 0 ? Number(a.maxPoints) : 100;
+            const norm = Math.max(0, Math.min(100, (Number(sub.grade) / maxPts) * 100));
+            sumNormalized += norm;
+            gradedAssignmentsCount += 1;
+          }
+        });
+        platformAvg = sumNormalized / allAssignments.length;
+      }
+      const platformWeighted = (platformAvg * Number(cfg.platformWeight || 0)) / 100;
+
+      const courseAttendance = (appState.db.attendance || []).filter(
+        a => a.courseId === course.id && a.studentId && a.studentId !== 'admin'
+      );
+      const uniqueCourseDates = new Set(courseAttendance.map(a => a.date));
+      const totalRecordedDays = uniqueCourseDates.size;
+      const effectiveTotalDays = Number(cfg.expectedSessions) > 0 ? Number(cfg.expectedSessions) : totalRecordedDays;
+
+      const studentDates = new Set(
+        courseAttendance.filter(a => a.studentId === studentId).map(a => a.date)
+      );
+      const studentAttendanceCount = studentDates.size;
+
+      let attendancePct = 0;
+      if (effectiveTotalDays > 0) {
+        attendancePct = Math.min(100, (studentAttendanceCount / effectiveTotalDays) * 100);
+      }
+      const attendanceWeighted = (attendancePct * Number(cfg.attendanceWeight || 0)) / 100;
+
+      let productsWeightedTotal = 0;
+      const productBreakdown = products.map(p => {
+        const score = getProductScoreValue(course, p.id, studentId);
+        const numericScore = score !== null ? score : 0;
+        const w = Number(p.weight || 0);
+        const weightedPts = (numericScore * w) / 100;
+        productsWeightedTotal += weightedPts;
+        return { product: p, score, numericScore, weight: w, weightedPts };
+      });
+
+      const productsWeightSum = products.reduce((acc, p) => acc + Number(p.weight || 0), 0);
+      const totalConfiguredWeight = Number(cfg.platformWeight || 0) + Number(cfg.attendanceWeight || 0) + productsWeightSum;
+      const finalGrade = Math.max(0, Math.min(100, platformWeighted + attendanceWeighted + productsWeightedTotal));
+
+      return {
+        totalAssignments: allAssignments.length,
+        gradedAssignmentsCount,
+        platformAvg,
+        platformWeight: Number(cfg.platformWeight || 0),
+        platformWeighted,
+        studentAttendanceCount,
+        effectiveTotalDays,
+        totalRecordedDays,
+        attendancePct,
+        attendanceWeight: Number(cfg.attendanceWeight || 0),
+        attendanceWeighted,
+        productBreakdown,
+        productsWeightSum,
+        productsWeightedTotal,
+        totalConfiguredWeight,
+        finalGrade
+      };
+    }
+
+    // ==================== NOTIFICACIONES Y MODALES ====================
+    function showToast(msg, type = 'info') {
+      const root = document.getElementById('toast-root');
+      if (!root) return;
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-rose-600 text-white',
+        info: 'bg-slate-900 text-white'
+      };
+      const el = document.createElement('div');
+      el.className = `${colors[type] || colors.info} px-4 py-3 rounded-xl shadow-lg text-xs font-semibold flex items-center justify-between gap-3 transition-all`;
+      el.innerHTML = `<span>${esc(msg)}</span><button class="opacity-75 hover:opacity-100 font-bold">&times;</button>`;
+      el.querySelector('button').addEventListener('click', () => el.remove());
+      root.appendChild(el);
+      setTimeout(() => el.remove(), 3600);
+    }
+
+    let activeQrScannerInstance = null;
+    let activeSpeechRecognition = null;
+
+    function stopActiveQrScanner() {
+      if (activeQrScannerInstance) {
+        try {
+          activeQrScannerInstance.stop().catch(() => {}).finally(() => {
+            try { activeQrScannerInstance.clear(); } catch (e) {}
+          });
+        } catch (e) {}
+        activeQrScannerInstance = null;
+      }
+    }
+
+    function stopActiveSpeechRecognition() {
+      if (activeSpeechRecognition) {
+        try { activeSpeechRecognition.stop(); } catch (e) {}
+        activeSpeechRecognition = null;
+      }
+    }
+
+    function openModal(title, htmlContent, onMount, maxWidthClass = 'max-w-lg') {
+      stopActiveQrScanner();
+      stopActiveSpeechRecognition();
+      const root = document.getElementById('modal-root');
+      const box = document.getElementById('modal-box');
+      const titleEl = document.getElementById('modal-title');
+      const bodyEl = document.getElementById('modal-body');
+      box.className = `bg-white rounded-2xl shadow-2xl border border-slate-200 w-full ${maxWidthClass} overflow-hidden my-8`;
+      titleEl.textContent = title;
+      bodyEl.innerHTML = htmlContent;
+      root.classList.remove('hidden');
+      if (typeof onMount === 'function') onMount(bodyEl);
+    }
+
+    function closeModal() {
+      stopActiveQrScanner();
+      stopActiveSpeechRecognition();
+      document.getElementById('modal-root').classList.add('hidden');
+      document.getElementById('modal-body').innerHTML = '';
+    }
+
+    document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+
+    // ==================== TRANSCRIPCIÓN DEL MAESTRO + IA GEMINI ====================
+    async function generateTeacherSummaryWithAI(rawTranscript, courseTitle, sequenceTitle) {
+      const text = String(rawTranscript || '').trim();
+      if (!text) return '';
+
+      const apiKey = getGeminiApiKey();
+      if (apiKey) {
+        try {
+          const prompt = `Eres un asistente pedagógico de nivel bachillerato en la Plataforma PUMA STEAM.
+Materia: "${courseTitle}"
+Secuencia didáctica: "${sequenceTitle}"
+
+A partir de la siguiente transcripción hablada de la explicación del docente en clase, genera un resumen estructurado, claro y didáctico para los estudiantes que incluya:
+1. Ideas Clave Explicadas por el Docente (viñetas claras).
+2. Conceptos Fundamentales Mencionados.
+3. Recomendaciones o Acciones para los Estudiantes.
+
+Transcripción del docente:
+"""
+${text}
+"""`;
+          const res = await fetchWithTimeout(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.35 }
+              })
+            },
+            12000
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (candidateText) return candidateText.trim();
+          }
+        } catch (e) {}
+      }
+
+      // Motor estructurador inteligente integrado (fallback automático sin requerir llave externa)
+      const cleanSentences = text
+        .replace(/\s+/g, ' ')
+        .split(/(?<=[.?!;])\s+|\n+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 8);
+
+      const words = text
+        .toLowerCase()
+        .replace(/[^a-záéíóúñü0-9\s]/gi, '')
+        .split(/\s+/)
+        .filter(w => w.length > 5 && !['porque', 'cuando', 'también', 'entonces', 'vamos', 'tienen', 'pueden', 'dentro', 'sobre', 'donde', 'estamos', 'hacer', 'manera'].includes(w));
+
+      const freq = {};
+      words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+      const topKeywords = Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([w]) => w.charAt(0).toUpperCase() + w.slice(1));
+
+      const keyPoints = cleanSentences.slice(0, 5).map(s => `• ${s.endsWith('.') ? s : s + '.'}`);
+      const actionSentences = cleanSentences.filter(s =>
+        /tarea|práctica|entreg|realiz|investig|estudi|recuerd|importan|examen|proyecto|calcular|subir/i.test(s)
+      );
+
+      return [
+        `📌 RESUMEN EJECUTIVO DE LA EXPLICACIÓN (${sequenceTitle})`,
+        ``,
+        `🔹 Puntos Clave Explicados por el Docente:`,
+        ...(keyPoints.length ? keyPoints : [`• ${text}`]),
+        ``,
+        `🧠 Conceptos Centrales Detectados:`,
+        topKeywords.length ? `• ${topKeywords.join(' · ')}` : `• Contenidos fundamentales de ${sequenceTitle}`,
+        ``,
+        `✅ Indicaciones y Seguimiento para el Estudiante:`,
+        ...(actionSentences.length
+          ? actionSentences.slice(0, 3).map(s => `• ${s}`)
+          : [`• Repasar los puntos expuestos en esta secuencia y consultar los materiales adjuntos.`])
+      ].join('\n');
+    }
+
+    function openTeacherTranscriptionModal(courseId, moduleId) {
+      const course = getCourseById(courseId);
+      if (!course) return;
+      const mod = (course.modules || []).find(m => m.id === moduleId);
+      if (!mod) return;
+
+      const tr = mod.teacherTranscript || { rawText: '', summary: '', updatedAt: 0 };
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      openModal(
+        `🎙️ Transcripción del Maestro · ${mod.title}`,
+        `<div class="space-y-4">
+          <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-bold text-indigo-950">Captura de voz en aula + Resumen IA Gemini</p>
+              <p class="text-[11px] text-indigo-700 mt-0.5">Activa el micrófono mientras explicas el tema. El sistema detectará tu voz en español y generará un resumen estructurado para tus estudiantes en esta secuencia.</p>
+            </div>
+            <span id="mic-status-pill" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">Micrófono en espera</span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" id="btn-start-mic" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs">
+              <span>🎙️ Iniciar Grabación de Voz</span>
+            </button>
+            <button type="button" id="btn-stop-mic" class="hidden px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold">
+              ⏹ Detener Micrófono
+            </button>
+            <button type="button" id="btn-generate-ai-summary" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs">
+              <span>✨ Generar Resumen con Gemini IA</span>
+            </button>
+            <button type="button" id="btn-clear-transcript" class="ml-auto px-3 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-semibold">
+              Limpiar
+            </button>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Transcripción detectada de la explicación del docente</label>
+            <textarea id="inp-teacher-raw" rows="5" placeholder="Habla por el micrófono o escribe/edita aquí los puntos explicados en clase..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">${esc(tr.rawText)}</textarea>
+            <p id="live-interim-preview" class="text-[11px] text-indigo-600 italic mt-1 min-h-[16px]"></p>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-slate-700">Resumen IA para los estudiantes (editable)</label>
+              <span class="text-[11px] text-emerald-700 font-semibold">Se sincroniza en vivo en la secuencia</span>
+            </div>
+            <textarea id="inp-teacher-summary" rows="7" placeholder="Pulsa 'Generar Resumen con Gemini IA' para sintetizar automáticamente lo explicado..." class="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50/30 text-xs focus:ring-2 focus:ring-emerald-500 outline-none">${esc(tr.summary)}</textarea>
+          </div>
+
+          <details class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <summary class="text-[11px] font-bold text-slate-600 cursor-pointer">Configuración opcional de API Key de Google Gemini</summary>
+            <div class="mt-2 flex gap-2">
+              <input id="inp-gemini-key" type="password" value="${esc(getGeminiApiKey())}" placeholder="AIzaSy... (Opcional, usa motor IA integrado si se deja vacío)" class="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 text-xs" />
+              <button type="button" id="btn-save-gemini-key" class="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-semibold">Guardar Key</button>
+            </div>
+          </details>
+
+          <div class="flex justify-end gap-2 pt-3 border-t border-slate-200">
+            <button type="button" id="btn-cancel-tr" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancelar</button>
+            <button type="button" id="btn-save-tr" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs">Guardar y Publicar en la Secuencia</button>
+          </div>
+        </div>`,
+        () => {
+          const rawEl = document.getElementById('inp-teacher-raw');
+          const sumEl = document.getElementById('inp-teacher-summary');
+          const interimEl = document.getElementById('live-interim-preview');
+          const pillEl = document.getElementById('mic-status-pill');
+          const btnStart = document.getElementById('btn-start-mic');
+          const btnStop = document.getElementById('btn-stop-mic');
+          const btnAi = document.getElementById('btn-generate-ai-summary');
+
+          document.getElementById('btn-cancel-tr').addEventListener('click', closeModal);
+
+          document.getElementById('btn-save-gemini-key').addEventListener('click', () => {
+            saveGeminiApiKey(document.getElementById('inp-gemini-key').value);
+            showToast('Clave Gemini guardada en este navegador', 'success');
+          });
+
+          document.getElementById('btn-clear-transcript').addEventListener('click', () => {
+            rawEl.value = '';
+            sumEl.value = '';
+            interimEl.textContent = '';
+          });
+
+          btnStart.addEventListener('click', () => {
+            if (!SpeechRec) {
+              showToast('Tu navegador no soporta dictado directo por voz. Usa Chrome o Edge, o escribe el texto.', 'error');
+              return;
+            }
+            stopActiveSpeechRecognition();
+            const rec = new SpeechRec();
+            activeSpeechRecognition = rec;
+            rec.lang = 'es-MX';
+            rec.continuous = true;
+            rec.interimResults = true;
+
+            rec.onstart = () => {
+              pillEl.textContent = '🔴 Escuchando al docente...';
+              pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white mic-recording';
+              btnStart.classList.add('hidden');
+              btnStop.classList.remove('hidden');
+            };
+
+            rec.onresult = event => {
+              let interimTranscript = '';
+              let finalChunk = '';
+              for (let i = event.resultIndex; i < event.results.length; i++) {
+                const txt = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                  finalChunk += txt + ' ';
+                } else {
+                  interimTranscript += txt;
+                }
+              }
+              if (finalChunk) {
+                rawEl.value = (rawEl.value ? rawEl.value.trim() + ' ' : '') + finalChunk.trim();
+              }
+              interimEl.textContent = interimTranscript ? `Escuchando: "${interimTranscript}"` : '';
+            };
+
+            rec.onerror = () => {
+              pillEl.textContent = 'Micrófono pausado';
+              pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800';
+              btnStart.classList.remove('hidden');
+              btnStop.classList.add('hidden');
+            };
+
+            rec.onend = () => {
+              pillEl.textContent = 'Grabación finalizada';
+              pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700';
+              btnStart.classList.remove('hidden');
+              btnStop.classList.add('hidden');
+              interimEl.textContent = '';
+            };
+
+            try {
+              rec.start();
+            } catch (e) {}
+          });
+
+          btnStop.addEventListener('click', () => {
+            stopActiveSpeechRecognition();
+          });
+
+          btnAi.addEventListener('click', async () => {
+            const rawText = rawEl.value.trim();
+            if (!rawText) {
+              showToast('Primero graba con el micrófono o escribe la explicación del docente.', 'error');
+              return;
+            }
+            btnAi.disabled = true;
+            btnAi.innerHTML = '<span>⏳ Procesando resumen con Gemini IA...</span>';
+            try {
+              const generated = await generateTeacherSummaryWithAI(rawText, course.title, mod.title);
+              sumEl.value = generated;
+              showToast('Resumen generado con éxito', 'success');
+            } finally {
+              btnAi.disabled = false;
+              btnAi.innerHTML = '<span>✨ Generar Resumen con Gemini IA</span>';
+            }
+          });
+
+          document.getElementById('btn-save-tr').addEventListener('click', async () => {
+            stopActiveSpeechRecognition();
+            const liveCourse = getCourseById(courseId);
+            const liveMod = (liveCourse?.modules || []).find(m => m.id === moduleId);
+            if (!liveMod) return;
+
+            let rawText = rawEl.value.trim();
+            let summaryText = sumEl.value.trim();
+            if (rawText && !summaryText) {
+              summaryText = await generateTeacherSummaryWithAI(rawText, liveCourse.title, liveMod.title);
+            }
+
+            const now = Date.now();
+            liveMod.teacherTranscript = {
+              rawText,
+              summary: summaryText,
+              updatedAt: now
+            };
+            liveMod.updatedAt = now;
+            liveCourse.updatedAt = now;
+
+            closeModal();
+            renderMain();
+            await saveState(true);
+            showToast('Transcripción y resumen del maestro publicados en tiempo real', 'success');
+          });
+        },
+        'max-w-2xl'
+      );
+    }
+
+    // ==================== PASE DE LISTA QR Y MANUAL POR MATERIA ====================
+    function refreshOpenAttendanceModalIfVisible() {
+      const container = document.getElementById('live-qr-attendance-lists');
+      if (!container) return;
+      const courseId = container.getAttribute('data-course-id');
+      const dateStr = container.getAttribute('data-date') || getTodayFormatted();
+      const course = getCourseById(courseId);
+      if (!course) return;
+
+      const enrolledStudents = (appState.db.students || []).filter(
+        s => !isDemoStudentRecord(s) && (course.enrolledStudentIds || []).includes(s.id)
+      );
+      const todayRecords = (appState.db.attendance || []).filter(
+        a => a.courseId === courseId && a.date === dateStr && a.studentId !== 'admin'
+      );
+      const presentIds = new Set(todayRecords.map(r => r.studentId));
+      const pendingStudents = enrolledStudents.filter(s => !presentIds.has(s.id));
+
+      container.innerHTML = `
+        <div class="space-y-3">
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-xs font-bold text-amber-900">Pendientes por capturar hoy (${pendingStudents.length})</h4>
+              <span class="text-[11px] text-amber-700">Asistencia manual rápida</span>
+            </div>
+            ${
+              pendingStudents.length === 0
+                ? `<p class="text-xs text-emerald-700 font-semibold">¡Todos los alumnos inscritos en la materia registraron asistencia hoy!</p>`
+                : `<div class="max-h-36 overflow-y-auto divide-y divide-amber-200/60">
+                    ${pendingStudents
+                      .map(
+                        stu => `<div class="py-1.5 flex items-center justify-between gap-2 text-xs">
+                          <span class="font-medium text-slate-800">${esc(stu.name)} <span class="text-slate-400">(@${esc(stu.username)})</span></span>
+                          <button type="button" data-manual-att-stu="${esc(stu.id)}" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold">+ Marcar asistencia</button>
+                        </div>`
+                      )
+                      .join('')}
+                  </div>`
+            }
+          </div>
+
+          <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-xs font-bold text-emerald-950">Asistencias registradas hoy en ${esc(course.title)} (${todayRecords.length})</h4>
+              <span class="text-[11px] text-emerald-700">${esc(dateStr)}</span>
+            </div>
+            ${
+              todayRecords.length === 0
+                ? `<p class="text-xs text-slate-500">Ningún estudiante ha registrado asistencia todavía en esta materia hoy.</p>`
+                : `<div class="max-h-40 overflow-y-auto divide-y divide-emerald-200/60">
+                    ${todayRecords
+                      .map(
+                        r => `<div class="py-1.5 flex items-center justify-between gap-2 text-xs">
+                          <div>
+                            <span class="font-bold text-emerald-900">✓ ${esc(r.studentName)}</span>
+                            <span class="text-slate-500 ml-1">${esc(r.time || '')} hrs</span>
+                          </div>
+                          <button type="button" data-del-att-stu="${esc(r.studentId)}" class="px-2 py-0.5 rounded-md bg-rose-100 hover:bg-rose-200 text-rose-700 text-[11px] font-semibold">Eliminar</button>
+                        </div>`
+                      )
+                      .join('')}
+                  </div>`
+            }
+          </div>
+        </div>
+      `;
+
+      container.querySelectorAll('[data-manual-att-stu]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-manual-att-stu');
+          const stu = getStudentById(sid);
+          if (!stu) return;
+          const key = `${courseId}|${dateStr}|${sid}`;
+          if (appState.db.meta.deletedAttendance) delete appState.db.meta.deletedAttendance[key];
+
+          const exists = (appState.db.attendance || []).find(
+            a => a.courseId === courseId && a.date === dateStr && a.studentId === sid
+          );
+          if (!exists) {
+            appState.db.attendance.push({
+              id: uid('att'),
+              courseId,
+              courseTitle: course.title,
+              studentId: sid,
+              studentName: stu.name,
+              date: dateStr,
+              time: getNowTimeShort(),
+              createdAtTs: Date.now()
+            });
+            refreshOpenAttendanceModalIfVisible();
+            await saveState(false);
+            showToast(`Asistencia marcada a ${stu.name}`, 'success');
+          }
+        });
+      });
+
+      container.querySelectorAll('[data-del-att-stu]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-del-att-stu');
+          const key = `${courseId}|${dateStr}|${sid}`;
+          appState.db.meta.deletedAttendance[key] = Date.now() + 1000;
+          appState.db.attendance = (appState.db.attendance || []).filter(
+            a => !(a.courseId === courseId && a.date === dateStr && a.studentId === sid)
+          );
+          refreshOpenAttendanceModalIfVisible();
+          await saveState(false);
+          showToast('Asistencia eliminada', 'info');
+        });
+      });
+    }
+
+    function openTeacherQrModal(courseId) {
+      const course = getCourseById(courseId);
+      if (!course) return;
+      const todayStr = getTodayFormatted();
+      const qrPayload = `PUMA_ASISTENCIA|${course.id}|${todayStr}`;
+
+      openModal(
+        `Pase de Lista QR · ${course.title}`,
+        `<div class="space-y-4">
+          <div class="text-center bg-slate-50 p-4 rounded-2xl border border-slate-200">
+            <p class="text-xs font-bold text-indigo-700 uppercase tracking-wider">${esc(course.code)} · ${esc(course.title)}</p>
+            <p class="text-xs text-slate-500 mt-0.5">Fecha Hermosillo, Sonora: <strong>${esc(todayStr)}</strong> (1 asistencia diaria por materia)</p>
+            <div id="qrcode-box" class="flex justify-center my-4"></div>
+            <p class="text-[11px] text-slate-500">Código manual para estudiantes sin cámara:</p>
+            <code class="inline-block mt-1 px-3 py-1 rounded-lg bg-slate-900 text-amber-300 text-xs font-mono select-all">${esc(qrPayload)}</code>
+          </div>
+          <div id="live-qr-attendance-lists" data-course-id="${esc(course.id)}" data-date="${esc(todayStr)}"></div>
+        </div>`,
+        () => {
+          const qBox = document.getElementById('qrcode-box');
+          if (qBox && window.QRCode) {
+            new QRCode(qBox, { text: qrPayload, width: 200, height: 200 });
+          }
+          refreshOpenAttendanceModalIfVisible();
+        },
+        'max-w-xl'
+      );
+    }
+
+    function openStudentAttendanceScannerModal(courseContext = null) {
+      if (!appState.session || appState.session.role !== 'student') return;
+      const activeStudent = getStudentById(appState.session.user.id) || appState.session.user;
+
+      openModal(
+        'Registrar Asistencia por QR',
+        `<div id="scanner-view-body" class="space-y-4">
+          <p class="text-xs text-slate-600">Escanea el código QR proyectado por tu profesor o pega el código manual de la materia.</p>
+          <div id="qr-reader" class="w-full rounded-xl overflow-hidden border border-slate-300 bg-slate-900 min-h-[240px]"></div>
+          <div class="pt-2 border-t border-slate-200">
+            <label class="block text-xs font-bold text-slate-700 mb-1">¿Sin cámara? Ingresa el código manual:</label>
+            <div class="flex gap-2">
+              <input id="inp-manual-qr" type="text" placeholder="PUMA_ASISTENCIA|..." class="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono" />
+              <button id="btn-submit-manual-qr" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Validar</button>
+            </div>
+          </div>
+        </div>`,
+        () => {
+          syncNow({ push: false, silent: true });
+
+          async function handleCode(rawText) {
+            const parts = String(rawText || '').trim().split('|');
+            if (parts[0] !== 'PUMA_ASISTENCIA' || parts.length < 3) {
+              showToast('Código QR no válido para asistencia', 'error');
+              return;
+            }
+            const scannedCourseId = parts[1];
+            const scannedDate = parts[2];
+            stopActiveQrScanner();
+
+            await syncNow({ push: false, silent: true });
+            const targetCourse = getCourseById(scannedCourseId) || courseContext;
+            const attKey = `${scannedCourseId}|${scannedDate}|${activeStudent.id}`;
+
+            if (appState.db.meta.deletedAttendance) {
+              delete appState.db.meta.deletedAttendance[attKey];
+            }
+
+            if (targetCourse && !targetCourse.enrolledStudentIds.includes(activeStudent.id)) {
+              targetCourse.enrolledStudentIds.push(activeStudent.id);
+            }
+
+            const existing = (appState.db.attendance || []).find(
+              a => a.courseId === scannedCourseId && a.date === scannedDate && a.studentId === activeStudent.id
+            );
+            const nowTs = Date.now();
+            if (existing) {
+              existing.createdAtTs = nowTs;
+              existing.time = getNowTimeShort();
+            } else {
+              appState.db.attendance.push({
+                id: uid('att'),
+                courseId: scannedCourseId,
+                courseTitle: targetCourse ? targetCourse.title : scannedCourseId,
+                studentId: activeStudent.id,
+                studentName: activeStudent.name,
+                date: scannedDate,
+                time: getNowTimeShort(),
+                createdAtTs: nowTs
+              });
+            }
+
+            const body = document.getElementById('scanner-view-body');
+            if (body) {
+              body.innerHTML = `<div class="text-center py-6 space-y-3">
+                <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-2xl font-bold">✓</div>
+                <h4 class="font-bold text-slate-900 text-base">${esc(activeStudent.name)}</h4>
+                <p class="text-xs text-slate-600">Asistencia registrada en <strong>${esc(targetCourse ? targetCourse.title : scannedCourseId)}</strong> (${esc(scannedDate)}).</p>
+                <p id="att-sync-status" class="text-xs font-semibold text-indigo-600">Sincronizando en tiempo real...</p>
+                <button id="btn-close-qr-done" class="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">Aceptar</button>
+              </div>`;
+              document.getElementById('btn-close-qr-done').addEventListener('click', () => {
+                closeModal();
+                renderMain();
+              });
+            }
+
+            const res = await saveState(false);
+            const stEl = document.getElementById('att-sync-status');
+            if (stEl) {
+              stEl.textContent = res.ok ? '✓ Sincronizada en la nube del docente' : 'Guardada en el dispositivo';
+              stEl.className = 'text-xs font-semibold text-emerald-600';
+            }
+          }
+
+          document.getElementById('btn-submit-manual-qr').addEventListener('click', () => {
+            handleCode(document.getElementById('inp-manual-qr').value);
+          });
+
+          if (window.Html5Qrcode) {
+            try {
+              const scanner = new Html5Qrcode('qr-reader');
+              activeQrScannerInstance = scanner;
+              scanner.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 220, height: 220 } },
+                decodedText => handleCode(decodedText),
+                () => {}
+              ).catch(() => {});
+            } catch (e) {}
+          }
+        }
+      );
+    }
+
+    // ==================== VISTAS DE AUTENTICACIÓN ====================
+    function renderAuth() {
+      const root = document.getElementById('app-root');
+      const coursesCount = (appState.db.courses || []).length;
+      const studentsCount = (appState.db.students || []).length;
+
+      root.innerHTML = `
+        <div class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
+          <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+            <div class="bg-gradient-to-r from-indigo-700 to-blue-700 p-6 text-white text-center">
+              <span class="px-3 py-1 rounded-full bg-white/15 text-[11px] font-bold tracking-wider uppercase">Prepa Federal Lázaro Cárdenas</span>
+              <h1 class="text-2xl font-extrabold mt-2">PLATAFORMA PUMA STEAM</h1>
+              <p class="text-xs text-indigo-100 mt-1">Aula Virtual · Sincronización en Tiempo Real</p>
+            </div>
+
+            <div class="p-6 space-y-4">
+              <div class="px-3.5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between">
+                <span class="font-semibold flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
+                  Conectado en vivo
+                </span>
+                <span>${coursesCount} materias · ${studentsCount} alumnos</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                <button id="tab-login" class="py-2 rounded-lg text-xs font-bold ${appState.authMode === 'login' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'}">Iniciar Sesión</button>
+                <button id="tab-register" class="py-2 rounded-lg text-xs font-bold ${appState.authMode === 'register' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'}">Nuevo Estudiante</button>
+              </div>
+
+              ${
+                appState.authMode === 'login'
+                  ? `<form id="form-login" class="space-y-3">
+                      <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Usuario</label>
+                        <input id="login-user" type="text" required placeholder="Usuario docente o estudiante" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Contraseña</label>
+                        <input id="login-pass" type="password" required placeholder="••••••••" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+                      </div>
+                      <button type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md">Entrar al Aula Virtual</button>
+                    </form>`
+                  : `<form id="form-register" class="space-y-3">
+                      <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Nombre completo del estudiante</label>
+                        <input id="reg-name" type="text" required placeholder="Ej. María Fernanda López" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm" />
+                      </div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <div>
+                          <label class="block text-xs font-bold text-slate-700 mb-1">Usuario</label>
+                          <input id="reg-user" type="text" required placeholder="maria.lopez" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+                        </div>
+                        <div>
+                          <label class="block text-xs font-bold text-slate-700 mb-1">Grupo / Semestre</label>
+                          <input id="reg-group" type="text" required placeholder="3°A" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Contraseña</label>
+                        <input id="reg-pass" type="password" required value="aB123456." class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm" />
+                      </div>
+                      <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md">Crear Cuenta de Estudiante</button>
+                    </form>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('tab-login').addEventListener('click', () => {
+        appState.authMode = 'login';
+        renderAuth();
+      });
+      document.getElementById('tab-register').addEventListener('click', () => {
+        appState.authMode = 'register';
+        renderAuth();
+      });
+
+      const loginForm = document.getElementById('form-login');
+      if (loginForm) {
+        loginForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const u = document.getElementById('login-user').value.trim();
+          const p = document.getElementById('login-pass').value.trim();
+
+          if (u.toLowerCase() === ADMIN_USER && p === ADMIN_PASS) {
+            appState.session = {
+              role: 'admin',
+              user: { id: 'admin', name: 'Mtro. Francisco J. Tapia López', username: ADMIN_USER }
+            };
+            renderMain();
+            syncNow({ push: false, silent: true });
+            return;
+          }
+
+          await syncNow({ push: false, silent: true });
+          const found = (appState.db.students || []).find(
+            s => !isDemoStudentRecord(s) && s.username.toLowerCase() === u.toLowerCase() && s.password === p
+          );
+          if (!found) {
+            showToast('Usuario o contraseña incorrectos', 'error');
+            return;
+          }
+          appState.session = { role: 'student', user: found };
+          renderMain();
+        });
+      }
+
+      const regForm = document.getElementById('form-register');
+      if (regForm) {
+        regForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const name = document.getElementById('reg-name').value.trim();
+          const username = document.getElementById('reg-user').value.trim();
+          const group = document.getElementById('reg-group').value.trim();
+          const password = document.getElementById('reg-pass').value.trim();
+
+          await syncNow({ push: false, silent: true });
+          if (
+            username.toLowerCase() === ADMIN_USER ||
+            DEMO_STUDENT_USERNAMES.has(username.toLowerCase()) ||
+            (appState.db.students || []).some(s => s.username.toLowerCase() === username.toLowerCase())
+          ) {
+            showToast('Ese nombre de usuario ya está ocupado o reservado', 'error');
+            return;
+          }
+
+          const newStudent = {
+            id: uid('stu'),
+            name,
+            username,
+            group,
+            password,
+            updatedAt: Date.now()
+          };
+          appState.db.students.push(newStudent);
+          (appState.db.courses || []).forEach(c => {
+            if (!c.enrolledStudentIds.includes(newStudent.id)) c.enrolledStudentIds.push(newStudent.id);
+          });
+
+          appState.session = { role: 'student', user: newStudent };
+          renderMain();
+          await saveState(true);
+          showToast('Cuenta creada y sincronizada en la nube', 'success');
+        });
+      }
+    }
+
+    // ==================== DETALLE DE MATERIA, SECUENCIAS Y TRANSCRIPCIÓN ====================
+    function renderCourseDetail() {
+      const container = document.getElementById('view-content');
+      const course = getCourseById(appState.selectedCourseId);
+      if (!course) {
+        appState.activeView = 'courses';
+        renderMain();
+        return;
+      }
+      normalizeCourseGrading(course);
+
+      const isAdmin = appState.session.role === 'admin';
+      const userId = appState.session.user.id;
+      const enrolledStudents = (appState.db.students || []).filter(
+        s => !isDemoStudentRecord(s) && (course.enrolledStudentIds || []).includes(s.id)
+      );
+
+      container.innerHTML = `
+        <div class="space-y-6">
+          <div class="bg-gradient-to-r ${esc(course.color || 'from-indigo-600 to-blue-700')} rounded-3xl p-6 text-white shadow-lg">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <button id="btn-back-courses" class="text-xs font-bold bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl mb-3 inline-flex items-center gap-1">← Volver a Materias</button>
+                <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider opacity-90">
+                  <span>${esc(course.code)}</span> · <span>${esc(course.semester)}</span> · <span>${esc(course.category)}</span>
+                </div>
+                <h2 class="text-2xl font-extrabold mt-1">${esc(course.title)}</h2>
+                <p class="text-xs text-white/90 mt-1 max-w-2xl">${esc(course.description)}</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                ${
+                  isAdmin
+                    ? `<button id="btn-take-qr-att" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md">📷 Pase de Lista QR (${esc(getTodayFormatted())})</button>
+                       <button id="btn-delete-this-course" class="px-3.5 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-xs">🗑 Eliminar Materia</button>`
+                    : `<button id="btn-stu-scan-qr" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md">📷 Escanear QR de Asistencia</button>`
+                }
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2 mt-6 pt-4 border-t border-white/20">
+              <button data-course-tab="content" class="px-4 py-2 rounded-xl text-xs font-bold ${appState.courseTab === 'content' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📚 Secuencias (${(course.modules || []).length})</button>
+              <button data-course-tab="gradebook" class="px-4 py-2 rounded-xl text-xs font-bold ${appState.courseTab === 'gradebook' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📊 Libro de Calificaciones (100 pts)</button>
+              <button data-course-tab="attendance" class="px-4 py-2 rounded-xl text-xs font-bold ${appState.courseTab === 'attendance' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📋 Libro de Asistencia</button>
+            </div>
+          </div>
+
+          <div id="course-tab-panel"></div>
+        </div>
+      `;
+
+      document.getElementById('btn-back-courses').addEventListener('click', () => {
+        appState.activeView = 'courses';
+        renderMain();
+      });
+
+      const qrBtn = document.getElementById('btn-take-qr-att');
+      if (qrBtn) qrBtn.addEventListener('click', () => openTeacherQrModal(course.id));
+
+      const stuQrBtn = document.getElementById('btn-stu-scan-qr');
+      if (stuQrBtn) stuQrBtn.addEventListener('click', () => openStudentAttendanceScannerModal(course));
+
+      const delCourseBtn = document.getElementById('btn-delete-this-course');
+      if (delCourseBtn) {
+        delCourseBtn.addEventListener('click', async () => {
+          if (!confirm(`¿Seguro que deseas eliminar permanentemente la materia "${course.title}"? Se sincronizará la baja en toda la nube.`)) return;
+          const now = Date.now() + 5000;
+          appState.db.meta.deletedCourses[course.id] = now;
+          savePersistedDeletedCourses(appState.db.meta.deletedCourses);
+          appState.db.courses = (appState.db.courses || []).filter(c => c.id !== course.id);
+          appState.selectedCourseId = null;
+          appState.activeView = 'courses';
+          renderMain();
+          await saveState(true);
+          showToast('Materia eliminada permanentemente de la nube', 'info');
+        });
+      }
+
+      container.querySelectorAll('[data-course-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          appState.courseTab = btn.getAttribute('data-course-tab');
+          renderCourseDetail();
+        });
+      });
+
+      const tabPanel = document.getElementById('course-tab-panel');
+
+      // -------------------- PESTAÑA 1: SECUENCIAS + TRANSCRIPCIÓN DEL MAESTRO --------------------
+      if (appState.courseTab === 'content') {
+        tabPanel.innerHTML = `
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-900 text-base">Secuencias Didácticas de la Materia</h3>
+              ${
+                isAdmin
+                  ? `<button id="btn-add-module" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs">+ Nueva Secuencia</button>`
+                  : ''
+              }
+            </div>
+
+            ${
+              (course.modules || []).length === 0
+                ? `<div class="bg-white rounded-2xl p-8 text-center border border-slate-200">
+                    <p class="text-sm text-slate-500">Aún no hay secuencias creadas en esta materia.</p>
+                    ${isAdmin ? `<button id="btn-empty-add-module" class="mt-3 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">+ Crear Primera Secuencia</button>` : ''}
+                  </div>`
+                : (course.modules || [])
+                    .map(mod => {
+                      const tr = mod.teacherTranscript || { rawText: '', summary: '', updatedAt: 0 };
+                      const hasTranscript = Boolean(tr.summary || tr.rawText);
+
+                      return `
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                          <div class="px-5 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2">
+                            <h4 class="font-bold text-sm">${esc(mod.title)}</h4>
+                            ${
+                              isAdmin
+                                ? `<div class="flex flex-wrap items-center gap-2">
+                                    <button data-transcribe-mod="${esc(mod.id)}" class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold flex items-center gap-1">
+                                      🎙️ Transcripción del Maestro
+                                    </button>
+                                    <button data-add-res="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-semibold">+ Material</button>
+                                    <button data-add-ass="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-xs font-semibold">+ Actividad</button>
+                                    <button data-del-mod="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-xs font-semibold">Eliminar</button>
+                                  </div>`
+                                : ''
+                            }
+                          </div>
+
+                          <div class="p-5 space-y-4">
+                            <!-- Bloque de Transcripción del Maestro con IA Gemini -->
+                            ${
+                              hasTranscript
+                                ? `<div class="bg-gradient-to-r from-indigo-50 to-emerald-50 border border-indigo-200 rounded-2xl p-4 space-y-2">
+                                    <div class="flex items-center justify-between">
+                                      <span class="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                                        🎙️✨ Resumen de la Explicación del Maestro (IA Gemini)
+                                      </span>
+                                      ${
+                                        isAdmin
+                                          ? `<button data-transcribe-mod="${esc(mod.id)}" class="text-[11px] font-bold text-indigo-700 hover:underline">Editar / Volver a grabar</button>`
+                                          : ''
+                                      }
+                                    </div>
+                                    ${
+                                      tr.summary
+                                        ? `<div class="text-xs text-slate-800 whitespace-pre-line bg-white/80 p-3 rounded-xl border border-indigo-100 leading-relaxed">${esc(tr.summary)}</div>`
+                                        : ''
+                                    }
+                                    ${
+                                      tr.rawText
+                                        ? `<details class="text-[11px] text-slate-600">
+                                            <summary class="cursor-pointer font-semibold text-indigo-700">Ver transcripción completa de voz del docente</summary>
+                                            <p class="mt-1.5 p-2.5 bg-white rounded-lg border border-slate-200 whitespace-pre-line">${esc(tr.rawText)}</p>
+                                          </details>`
+                                        : ''
+                                    }
+                                  </div>`
+                                : isAdmin
+                                ? `<div class="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-3 flex items-center justify-between">
+                                    <span class="text-xs text-slate-500">🎙️ Usa el micrófono en clase para generar un resumen automático con IA de tu explicación en esta secuencia.</span>
+                                    <button data-transcribe-mod="${esc(mod.id)}" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shrink-0">Abrir Transcripción</button>
+                                  </div>`
+                                : ''
+                            }
+
+                            <!-- Materiales -->
+                            <div>
+                              <h5 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Materiales y Recursos</h5>
+                              ${
+                                (mod.resources || []).length === 0
+                                  ? `<p class="text-xs text-slate-400 italic">Sin materiales registrados.</p>`
+                                  : `<div class="space-y-2">
+                                      ${(mod.resources || [])
+                                        .map(
+                                          r => `<div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-2">
+                                            <div>
+                                              <span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase">${esc(r.type)}</span>
+                                              <p class="font-bold text-xs text-slate-800 mt-1">${esc(r.title)}</p>
+                                              <p class="text-xs text-slate-600 mt-0.5">${esc(r.detail)}</p>
+                                            </div>
+                                            ${
+                                              isAdmin
+                                                ? `<button data-del-res="${esc(mod.id)}|${esc(r.id)}" class="text-rose-600 hover:text-rose-800 text-xs font-bold">✕</button>`
+                                                : ''
+                                            }
+                                          </div>`
+                                        )
+                                        .join('')}
+                                    </div>`
+                              }
+                            </div>
+
+                            <!-- Actividades -->
+                            <div>
+                              <h5 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Actividades de la Secuencia</h5>
+                              ${
+                                (mod.assignments || []).length === 0
+                                  ? `<p class="text-xs text-slate-400 italic">Sin actividades en esta secuencia.</p>`
+                                  : `<div class="space-y-2">
+                                      ${(mod.assignments || [])
+                                        .map(a => {
+                                          const mySub = !isAdmin ? getSubmission(course.id, a.id, userId) : null;
+                                          return `<div class="p-3.5 rounded-xl bg-amber-50/50 border border-amber-200 flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                              <p class="font-bold text-xs text-slate-900">📝 ${esc(a.title)}</p>
+                                              <p class="text-xs text-slate-600 mt-0.5">${esc(a.instructions)}</p>
+                                              <p class="text-[11px] text-slate-500 mt-1">Vence: <strong>${esc(a.dueDate || 'Sin fecha')}</strong> · Valor: ${Number(a.maxPoints || 100)} pts</p>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                              ${
+                                                isAdmin
+                                                  ? `<button data-grade-ass="${esc(a.id)}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold">Revisar Entregas</button>
+                                                     <button data-del-ass="${esc(mod.id)}|${esc(a.id)}" class="px-2 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-bold">✕</button>`
+                                                  : `<button data-submit-ass="${esc(a.id)}" class="px-3 py-1.5 rounded-lg ${mySub ? 'bg-emerald-600' : 'bg-indigo-600'} text-white text-xs font-bold">
+                                                      ${mySub ? (mySub.grade !== null && mySub.grade !== undefined ? `Calificado: ${mySub.grade}/${a.maxPoints}` : 'Entregado (Editar)') : 'Entregar Actividad'}
+                                                     </button>`
+                                              }
+                                            </div>
+                                          </div>`;
+                                        })
+                                        .join('')}
+                                    </div>`
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      `;
+                    })
+                    .join('')
+            }
+          </div>
+        `;
+
+        const openNewModuleDialog = () => {
+          openModal(
+            'Nueva Secuencia Didáctica',
+            `<form id="form-new-mod" class="space-y-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Título de la Secuencia</label>
+                <input id="inp-mod-title" type="text" required placeholder="Ej. Secuencia 2: Leyes de Newton" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+              </div>
+              <div class="flex justify-end gap-2 pt-2">
+                <button type="button" id="btn-cancel-mod" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold">Cancelar</button>
+                <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Crear Secuencia</button>
+              </div>
+            </form>`,
+            () => {
+              document.getElementById('btn-cancel-mod').addEventListener('click', closeModal);
+              document.getElementById('form-new-mod').addEventListener('submit', async e => {
+                e.preventDefault();
+                const title = document.getElementById('inp-mod-title').value.trim();
+                if (!title) return;
+                const liveCourse = getCourseById(course.id);
+                if (!liveCourse) return;
+                const now = Date.now();
+                liveCourse.modules.push({
+                  id: uid('mod'),
+                  title,
+                  updatedAt: now,
+                  teacherTranscript: { rawText: '', summary: '', updatedAt: 0 },
+                  resources: [],
+                  assignments: []
+                });
+                liveCourse.updatedAt = now;
+                closeModal();
+                renderCourseDetail();
+                await saveState(true);
+                showToast('Secuencia creada y sincronizada', 'success');
+              });
+            }
+          );
+        };
+
+        const addModBtn = document.getElementById('btn-add-module');
+        if (addModBtn) addModBtn.addEventListener('click', openNewModuleDialog);
+        const emptyAddModBtn = document.getElementById('btn-empty-add-module');
+        if (emptyAddModBtn) emptyAddModBtn.addEventListener('click', openNewModuleDialog);
+
+        tabPanel.querySelectorAll('[data-transcribe-mod]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            openTeacherTranscriptionModal(course.id, btn.getAttribute('data-transcribe-mod'));
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-del-mod]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const modId = btn.getAttribute('data-del-mod');
+            if (!confirm('¿Eliminar esta secuencia y su contenido?')) return;
+            const liveCourse = getCourseById(course.id);
+            if (!liveCourse) return;
+            const now = Date.now() + 2000;
+            appState.db.meta.deletedModules[modId] = now;
+            liveCourse.modules = (liveCourse.modules || []).filter(m => m.id !== modId);
+            liveCourse.updatedAt = now;
+            renderCourseDetail();
+            await saveState(true);
+            showToast('Secuencia eliminada', 'info');
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-add-res]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const modId = btn.getAttribute('data-add-res');
+            openModal(
+              'Agregar Material a la Secuencia',
+              `<form id="form-add-res" class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Tipo</label>
+                  <select id="res-type" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs">
+                    <option>Lectura</option><option>Video</option><option>Presentación</option><option>Práctica</option><option>Formulario</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Título</label>
+                  <input id="res-title" type="text" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Descripción o enlace</label>
+                  <textarea id="res-detail" rows="3" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                  <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Guardar Material</button>
+                </div>
+              </form>`,
+              () => {
+                document.getElementById('form-add-res').addEventListener('submit', async e => {
+                  e.preventDefault();
+                  const liveCourse = getCourseById(course.id);
+                  const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+                  if (!liveMod) return;
+                  const now = Date.now();
+                  liveMod.resources.push({
+                    id: uid('res'),
+                    type: document.getElementById('res-type').value,
+                    title: document.getElementById('res-title').value.trim(),
+                    detail: document.getElementById('res-detail').value.trim(),
+                    updatedAt: now
+                  });
+                  liveMod.updatedAt = now;
+                  liveCourse.updatedAt = now;
+                  closeModal();
+                  renderCourseDetail();
+                  await saveState(true);
+                });
+              }
+            );
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-add-ass]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const modId = btn.getAttribute('data-add-ass');
+            openModal(
+              'Nueva Actividad en la Secuencia',
+              `<form id="form-add-ass" class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Título de la Actividad</label>
+                  <input id="ass-title" type="text" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Instrucciones</label>
+                  <textarea id="ass-inst" rows="3" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Fecha límite</label>
+                    <input id="ass-due" type="date" value="${esc(getTodayFormatted())}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Puntos máx.</label>
+                    <input id="ass-pts" type="number" value="100" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                  </div>
+                </div>
+                <div class="flex justify-end">
+                  <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Crear Actividad</button>
+                </div>
+              </form>`,
+              () => {
+                document.getElementById('form-add-ass').addEventListener('submit', async e => {
+                  e.preventDefault();
+                  const liveCourse = getCourseById(course.id);
+                  const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+                  if (!liveMod) return;
+                  const now = Date.now();
+                  liveMod.assignments.push({
+                    id: uid('ass'),
+                    title: document.getElementById('ass-title').value.trim(),
+                    instructions: document.getElementById('ass-inst').value.trim(),
+                    dueDate: document.getElementById('ass-due').value,
+                    maxPoints: Number(document.getElementById('ass-pts').value || 100),
+                    updatedAt: now
+                  });
+                  liveMod.updatedAt = now;
+                  liveCourse.updatedAt = now;
+                  closeModal();
+                  renderCourseDetail();
+                  await saveState(true);
+                });
+              }
+            );
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-submit-ass]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const assId = btn.getAttribute('data-submit-ass');
+            const prevSub = getSubmission(course.id, assId, userId);
+            openModal(
+              'Entregar Actividad',
+              `<form id="form-sub-ass" class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Enlace o respuesta de tu entrega</label>
+                  <textarea id="sub-content" rows="4" required placeholder="Pega el enlace a Google Drive/Canva o escribe tu desarrollo..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs">${esc(prevSub?.content || '')}</textarea>
+                </div>
+                <div class="flex justify-end">
+                  <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold">Enviar Entrega</button>
+                </div>
+              </form>`,
+              () => {
+                document.getElementById('form-sub-ass').addEventListener('submit', async e => {
+                  e.preventDefault();
+                  const content = document.getElementById('sub-content').value.trim();
+                  const now = Date.now();
+                  if (prevSub) {
+                    prevSub.content = content;
+                    prevSub.submittedAt = getTodayFormatted();
+                    prevSub.updatedAt = now;
+                  } else {
+                    appState.db.submissions.push({
+                      id: uid('sub'),
+                      courseId: course.id,
+                      assignmentId: assId,
+                      studentId: userId,
+                      studentName: appState.session.user.name,
+                      content,
+                      grade: null,
+                      submittedAt: getTodayFormatted(),
+                      updatedAt: now
+                    });
+                  }
+                  closeModal();
+                  renderCourseDetail();
+                  await saveState(false);
+                  showToast('Entrega enviada y sincronizada', 'success');
+                });
+              }
+            );
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-grade-ass]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const assId = btn.getAttribute('data-grade-ass');
+            const subs = (appState.db.submissions || []).filter(s => s.courseId === course.id && s.assignmentId === assId);
+            openModal(
+              'Calificar Entregas de la Actividad',
+              `<div class="space-y-3">
+                ${
+                  subs.length === 0
+                    ? `<p class="text-xs text-slate-500">Ningún estudiante ha enviado esta actividad todavía.</p>`
+                    : subs
+                        .map(
+                          s => `<div class="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+                            <div class="flex justify-between text-xs">
+                              <strong>${esc(s.studentName)}</strong>
+                              <span class="text-slate-400">${esc(s.submittedAt)}</span>
+                            </div>
+                            <p class="text-xs text-slate-700 bg-white p-2 rounded-lg border">${esc(s.content)}</p>
+                            <div class="flex items-center gap-2">
+                              <input type="number" min="0" max="100" data-grade-inp="${esc(s.id)}" value="${s.grade ?? ''}" placeholder="Calificación (0-100)" class="px-2.5 py-1 rounded-lg border text-xs w-36" />
+                              <button data-save-grade="${esc(s.id)}" class="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">Guardar</button>
+                            </div>
+                          </div>`
+                        )
+                        .join('')
+                }
+              </div>`,
+              () => {
+                document.querySelectorAll('[data-save-grade]').forEach(b => {
+                  b.addEventListener('click', async () => {
+                    const subId = b.getAttribute('data-save-grade');
+                    const inp = document.querySelector(`[data-grade-inp="${subId}"]`);
+                    const sub = (appState.db.submissions || []).find(x => x.id === subId);
+                    if (sub && inp) {
+                      sub.grade = inp.value === '' ? null : Number(inp.value);
+                      sub.updatedAt = Date.now();
+                      await saveState(false);
+                      showToast('Calificación guardada', 'success');
+                    }
+                  });
+                });
+              }
+            );
+          });
+        });
+      }
+
+      // -------------------- PESTAÑA 2: LIBRO DE CALIFICACIONES (100 PTS) --------------------
+      if (appState.courseTab === 'gradebook') {
+        const cfg = course.gradingConfig;
+        const productsWeightSum = (course.products || []).reduce((acc, p) => acc + Number(p.weight || 0), 0);
+        const totalConfigured = Number(cfg.platformWeight || 0) + Number(cfg.attendanceWeight || 0) + productsWeightSum;
+
+        if (!isAdmin) {
+          const ev = calculateStudentCourseEvaluation(course, userId);
+          tabPanel.innerHTML = `
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+              <div class="flex items-center justify-between border-b pb-4">
+                <div>
+                  <h3 class="font-bold text-base text-slate-900">Mi Desglose de Calificación Final</h3>
+                  <p class="text-xs text-slate-500">Ponderación configurada sobre 100 puntos</p>
+                </div>
+                <div class="text-right">
+                  <span class="text-xs text-slate-400 block">Calificación Final</span>
+                  <span class="text-3xl font-extrabold text-indigo-700">${ev.finalGrade.toFixed(1)} <span class="text-sm">/ 100</span></span>
+                </div>
+              </div>
+              <div class="grid md:grid-cols-3 gap-3 text-xs">
+                <div class="p-4 rounded-xl bg-blue-50 border border-blue-200">
+                  <p class="font-bold text-blue-950">Plataforma (${ev.platformWeight}%)</p>
+                  <p class="text-xl font-extrabold text-blue-700 mt-1">${ev.platformWeighted.toFixed(1)} pts</p>
+                </div>
+                <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <p class="font-bold text-emerald-950">Asistencia en Materia (${ev.attendanceWeight}%)</p>
+                  <p class="text-xl font-extrabold text-emerald-700 mt-1">${ev.attendanceWeighted.toFixed(1)} pts</p>
+                  <p class="text-[11px] text-emerald-700 mt-0.5">${ev.studentAttendanceCount} de ${ev.effectiveTotalDays} sesiones</p>
+                </div>
+                <div class="p-4 rounded-xl bg-amber-50 border border-amber-200">
+                  <p class="font-bold text-amber-950">Productos Evaluables (${ev.productsWeightSum}%)</p>
+                  <p class="text-xl font-extrabold text-amber-700 mt-1">${ev.productsWeightedTotal.toFixed(1)} pts</p>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          tabPanel.innerHTML = `
+            <div class="space-y-4">
+              <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 class="font-bold text-sm text-slate-900">Configuración de Ponderación y Productos Independientes</h3>
+                    <p class="text-xs text-slate-500">Suma total actual: <strong class="${totalConfigured === 100 ? 'text-emerald-600' : 'text-rose-600'}">${totalConfigured}% de 100%</strong></p>
+                  </div>
+                  <button id="btn-add-product" class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">+ Nuevo Producto Evaluable</button>
+                </div>
+
+                <div class="grid sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <label class="block font-bold text-slate-700 mb-1">% Actividades en Plataforma</label>
+                    <input id="inp-w-platform" type="number" min="0" max="100" value="${cfg.platformWeight}" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+                  </div>
+                  <div>
+                    <label class="block font-bold text-slate-700 mb-1">% Asistencia de la Materia</label>
+                    <input id="inp-w-attendance" type="number" min="0" max="100" value="${cfg.attendanceWeight}" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+                  </div>
+                  <div class="flex items-end">
+                    <button id="btn-save-weights" class="w-full py-2 rounded-xl bg-slate-900 text-white font-bold">Guardar Ponderación Base</button>
+                  </div>
+                </div>
+
+                <div class="space-y-2 pt-2 border-t">
+                  <p class="text-xs font-bold text-slate-700">Productos Evaluables (Independientes de las Secuencias):</p>
+                  ${(course.products || [])
+                    .map(
+                      p => `<div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border text-xs">
+                        <span><strong>${esc(p.title)}</strong> (${Number(p.weight)}%) — <span class="text-slate-500">${esc(p.description)}</span></span>
+                        <button data-del-prod="${esc(p.id)}" class="text-rose-600 font-bold px-2">Eliminar</button>
+                      </div>`
+                    )
+                    .join('')}
+                </div>
+              </div>
+
+              <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+                <table class="w-full text-xs text-left">
+                  <thead class="bg-slate-900 text-white">
+                    <tr>
+                      <th class="p-3">Estudiante</th>
+                      <th class="p-3">Plataforma (${cfg.platformWeight}%)</th>
+                      <th class="p-3">Asistencia (${cfg.attendanceWeight}%)</th>
+                      ${(course.products || []).map(p => `<th class="p-3">${esc(p.title)} (${p.weight}%)</th>`).join('')}
+                      <th class="p-3 font-extrabold text-amber-300">Final (100)</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y">
+                    ${enrolledStudents
+                      .map(stu => {
+                        const ev = calculateStudentCourseEvaluation(course, stu.id);
+                        return `<tr>
+                          <td class="p-3 font-bold">${esc(stu.name)}</td>
+                          <td class="p-3">${ev.platformWeighted.toFixed(1)} pts</td>
+                          <td class="p-3">${ev.attendanceWeighted.toFixed(1)} pts (${ev.studentAttendanceCount}/${ev.effectiveTotalDays})</td>
+                          ${(course.products || [])
+                            .map(p => {
+                              const val = getProductScoreValue(course, p.id, stu.id);
+                              return `<td class="p-3">
+                                <input type="number" min="0" max="100" data-prod-grade="${esc(p.id)}|${esc(stu.id)}" value="${val !== null ? val : ''}" placeholder="0-100" class="w-20 px-2 py-1 rounded border text-xs" />
+                              </td>`;
+                            })
+                            .join('')}
+                          <td class="p-3 font-extrabold text-indigo-700 text-sm">${ev.finalGrade.toFixed(1)}</td>
+                        </tr>`;
+                      })
+                      .join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+
+          document.getElementById('btn-save-weights').addEventListener('click', async () => {
+            course.gradingConfig.platformWeight = Number(document.getElementById('inp-w-platform').value || 0);
+            course.gradingConfig.attendanceWeight = Number(document.getElementById('inp-w-attendance').value || 0);
+            course.gradingConfig.updatedAt = Date.now();
+            course.updatedAt = Date.now();
+            renderCourseDetail();
+            await saveState(true);
+            showToast('Ponderación actualizada', 'success');
+          });
+
+          document.getElementById('btn-add-product').addEventListener('click', () => {
+            openModal(
+              'Nuevo Producto Evaluable',
+              `<form id="form-new-prod" class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold mb-1">Nombre del Producto</label>
+                  <input id="prod-title" type="text" required class="w-full px-3 py-2 rounded-xl border text-xs" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold mb-1">Ponderación (%)</label>
+                  <input id="prod-weight" type="number" min="1" max="100" value="20" required class="w-full px-3 py-2 rounded-xl border text-xs" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold mb-1">Descripción</label>
+                  <input id="prod-desc" type="text" class="w-full px-3 py-2 rounded-xl border text-xs" />
+                </div>
+                <button type="submit" class="w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Agregar Producto</button>
+              </form>`,
+              () => {
+                document.getElementById('form-new-prod').addEventListener('submit', async e => {
+                  e.preventDefault();
+                  const now = Date.now();
+                  course.products.push({
+                    id: uid('prod'),
+                    title: document.getElementById('prod-title').value.trim(),
+                    weight: Number(document.getElementById('prod-weight').value || 0),
+                    description: document.getElementById('prod-desc').value.trim(),
+                    updatedAt: now
+                  });
+                  course.updatedAt = now;
+                  closeModal();
+                  renderCourseDetail();
+                  await saveState(true);
+                });
+              }
+            );
+          });
+
+          tabPanel.querySelectorAll('[data-del-prod]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const pid = btn.getAttribute('data-del-prod');
+              appState.db.meta.deletedProducts[pid] = Date.now() + 1000;
+              course.products = (course.products || []).filter(p => p.id !== pid);
+              course.updatedAt = Date.now();
+              renderCourseDetail();
+              await saveState(true);
+            });
+          });
+
+          tabPanel.querySelectorAll('[data-prod-grade]').forEach(inp => {
+            inp.addEventListener('change', async () => {
+              const [pid, sid] = inp.getAttribute('data-prod-grade').split('|');
+              setProductScoreValue(course, pid, sid, inp.value);
+              course.updatedAt = Date.now();
+              renderCourseDetail();
+              await saveState(true);
+            });
+          });
+        }
+      }
+
+      // -------------------- PESTAÑA 3: LIBRO DE ASISTENCIA POR MATERIA --------------------
+      if (appState.courseTab === 'attendance') {
+        const courseAtt = (appState.db.attendance || []).filter(a => a.courseId === course.id && a.studentId !== 'admin');
+        tabPanel.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+            <h3 class="font-bold text-sm text-slate-900">Registro de Asistencia Diaria · ${esc(course.title)}</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-slate-900 text-white">
+                  <tr>
+                    <th class="p-3">Estudiante</th>
+                    <th class="p-3">Total Días Presente</th>
+                    <th class="p-3">Fechas Registradas (Hermosillo, Son.)</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y">
+                  ${enrolledStudents
+                    .map(stu => {
+                      const recs = courseAtt.filter(a => a.studentId === stu.id);
+                      return `<tr>
+                        <td class="p-3 font-bold">${esc(stu.name)}</td>
+                        <td class="p-3 font-extrabold text-emerald-700">${recs.length}</td>
+                        <td class="p-3">
+                          <div class="flex flex-wrap gap-1.5">
+                            ${
+                              recs.length === 0
+                                ? `<span class="text-slate-400">Sin asistencias</span>`
+                                : recs
+                                    .map(
+                                      r => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900">
+                                        ${esc(r.date)} (${esc(r.time || '')})
+                                        ${
+                                          isAdmin
+                                            ? `<button data-del-book-att="${esc(r.courseId)}|${esc(r.date)}|${esc(r.studentId)}" class="text-rose-600 font-bold ml-1 hover:underline">Eliminar</button>`
+                                            : ''
+                                        }
+                                      </span>`
+                                    )
+                                    .join('')
+                            }
+                          </div>
+                        </td>
+                      </tr>`;
+                    })
+                    .join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+
+        tabPanel.querySelectorAll('[data-del-book-att]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const key = btn.getAttribute('data-del-book-att');
+            const [cid, dt, sid] = key.split('|');
+            appState.db.meta.deletedAttendance[key] = Date.now() + 1000;
+            appState.db.attendance = (appState.db.attendance || []).filter(
+              a => !(a.courseId === cid && a.date === dt && a.studentId === sid)
+            );
+            renderCourseDetail();
+            await saveState(false);
+            showToast('Asistencia eliminada de la nube', 'info');
+          });
+        });
+      }
+    }
+
+    // ==================== SHELL PRINCIPAL Y LISTADO DE MATERIAS ====================
+    function renderMain() {
+      if (!appState.session) {
+        renderAuth();
+        return;
+      }
+      const root = document.getElementById('app-root');
+      const isAdmin = appState.session.role === 'admin';
+
+      root.innerHTML = `
+        <div class="min-h-screen flex flex-col">
+          <header class="bg-slate-900 text-white px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
+            <div class="flex items-center gap-3">
+              <span class="px-2.5 py-1 rounded-lg bg-indigo-600 font-extrabold text-xs">PUMA STEAM</span>
+              <h1 class="font-bold text-sm sm:text-base">Aula Virtual · Prepa Lázaro Cárdenas</h1>
+              <span id="realtime-sync-badge" class="px-2.5 py-0.5 rounded-full bg-slate-800 text-emerald-400 text-[11px] font-semibold">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot inline-block mr-1"></span>En vivo
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="nav-courses" class="px-3 py-1.5 rounded-xl text-xs font-bold ${appState.activeView === 'courses' || appState.activeView === 'dashboard' ? 'bg-white text-slate-900' : 'bg-slate-800 text-slate-200'}">Materias</button>
+              ${
+                !isAdmin
+                  ? `<button id="nav-scan-qr" class="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-extrabold">📷 Escanear QR</button>`
+                  : ''
+              }
+              <span class="text-xs text-slate-300 hidden sm:inline ml-2">${esc(appState.session.user.name)}</span>
+              <button id="btn-logout" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold">Salir</button>
+            </div>
+          </header>
+
+          <main id="view-content" class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6"></main>
+        </div>
+      `;
+
+      updateRealtimeIndicator();
+
+      document.getElementById('nav-courses').addEventListener('click', () => {
+        appState.activeView = 'courses';
+        renderMain();
+      });
+
+      const scanBtn = document.getElementById('nav-scan-qr');
+      if (scanBtn) scanBtn.addEventListener('click', () => openStudentAttendanceScannerModal(null));
+
+      document.getElementById('btn-logout').addEventListener('click', () => {
+        appState.session = null;
+        renderAuth();
+      });
+
+      if (appState.activeView === 'course-detail' && appState.selectedCourseId) {
+        renderCourseDetail();
+        return;
+      }
+
+      const container = document.getElementById('view-content');
+      const courses = appState.db.courses || [];
+      const deletedCount = Object.keys(appState.db.meta?.deletedCourses || {}).length;
+
+      container.innerHTML = `
+        <div class="space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-xl font-extrabold text-slate-900">Catálogo de Materias Sincronizadas</h2>
+              <p class="text-xs text-slate-500">Zona horaria activa: Hermosillo, Sonora (${esc(getTodayFormatted())})</p>
+            </div>
+            ${
+              isAdmin
+                ? `<div class="flex items-center gap-2">
+                    ${
+                      deletedCount > 0
+                        ? `<button id="btn-restore-deleted-courses" class="px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50">Papelera en Nube (${deletedCount})</button>`
+                        : ''
+                    }
+                    <button id="btn-new-course" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs">+ Nueva Materia</button>
+                  </div>`
+                : ''
+            }
+          </div>
+
+          ${
+            courses.length === 0
+              ? `<div class="bg-white rounded-2xl p-10 text-center border border-slate-200">
+                  <p class="text-sm text-slate-500">No hay materias activas registradas.</p>
+                </div>`
+              : `<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  ${courses
+                    .map(
+                      c => `<div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between">
+                        <div>
+                          <div class="p-5 bg-gradient-to-r ${esc(c.color || 'from-indigo-600 to-blue-700')} text-white">
+                            <div class="flex justify-between items-center text-[11px] font-bold uppercase opacity-90">
+                              <span>${esc(c.code)}</span>
+                              <span>${esc(c.semester)}</span>
+                            </div>
+                            <h3 class="text-lg font-extrabold mt-1">${esc(c.title)}</h3>
+                            <p class="text-xs text-white/85 mt-1 line-clamp-2">${esc(c.description)}</p>
+                          </div>
+                          <div class="p-4 text-xs text-slate-600 space-y-1">
+                            <p><strong>Docente:</strong> ${esc(c.teacher)}</p>
+                            <p><strong>Secuencias:</strong> ${(c.modules || []).length}</p>
+                          </div>
+                        </div>
+                        <div class="p-4 pt-0 flex items-center gap-2">
+                          <button data-open-course="${esc(c.id)}" class="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold">Entrar a la Materia</button>
+                          ${
+                            isAdmin
+                              ? `<button data-quick-del-course="${esc(c.id)}" title="Eliminar materia" class="px-3 py-2.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold">🗑</button>`
+                              : ''
+                          }
+                        </div>
+                      </div>`
+                    )
+                    .join('')}
+                </div>`
+          }
+        </div>
+      `;
+
+      container.querySelectorAll('[data-open-course]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          appState.selectedCourseId = btn.getAttribute('data-open-course');
+          appState.activeView = 'course-detail';
+          appState.courseTab = 'content';
+          renderMain();
+        });
+      });
+
+      container.querySelectorAll('[data-quick-del-course]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const cid = btn.getAttribute('data-quick-del-course');
+          const target = getCourseById(cid);
+          if (!target) return;
+          if (!confirm(`¿Eliminar permanentemente la materia "${target.title}" en todos los dispositivos?`)) return;
+          const now = Date.now() + 5000;
+          appState.db.meta.deletedCourses[cid] = now;
+          savePersistedDeletedCourses(appState.db.meta.deletedCourses);
+          appState.db.courses = (appState.db.courses || []).filter(c => c.id !== cid);
+          renderMain();
+          await saveState(true);
+          showToast('Materia eliminada y sincronizada en la nube', 'info');
+        });
+      });
+
+      const restoreBtn = document.getElementById('btn-restore-deleted-courses');
+      if (restoreBtn) {
+        restoreBtn.addEventListener('click', () => {
+          const delMap = appState.db.meta.deletedCourses || {};
+          const keys = Object.keys(delMap);
+          openModal(
+            'Papelera de Materias Eliminadas en Nube',
+            `<div class="space-y-3">
+              <p class="text-xs text-slate-600">Estas materias están marcadas como eliminadas en la nube para que no vuelvan a aparecer al recargar.</p>
+              <div class="divide-y border rounded-xl">
+                ${keys
+                  .map(k => {
+                    const seedMatch = SEED_COURSES.find(s => s.id === k);
+                    return `<div class="p-3 flex items-center justify-between text-xs">
+                      <span class="font-bold">${esc(seedMatch ? seedMatch.title : k)}</span>
+                      <button data-restore-cid="${esc(k)}" class="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold">Restaurar</button>
+                    </div>`;
+                  })
+                  .join('')}
+              </div>
+            </div>`,
+            () => {
+              document.querySelectorAll('[data-restore-cid]').forEach(b => {
+                b.addEventListener('click', async () => {
+                  const cid = b.getAttribute('data-restore-cid');
+                  delete appState.db.meta.deletedCourses[cid];
+                  savePersistedDeletedCourses(appState.db.meta.deletedCourses);
+                  const seedMatch = SEED_COURSES.find(s => s.id === cid);
+                  if (seedMatch && !getCourseById(cid)) {
+                    appState.db.courses.push(normalizeCourseGrading({ ...JSON.parse(JSON.stringify(seedMatch)), updatedAt: Date.now() + 10000 }));
+                  }
+                  closeModal();
+                  renderMain();
+                  await saveState(true);
+                  showToast('Materia restaurada', 'success');
+                });
+              });
+            }
+          );
+        });
+      }
+
+      const newCourseBtn = document.getElementById('btn-new-course');
+      if (newCourseBtn) {
+        newCourseBtn.addEventListener('click', () => {
+          openModal(
+            'Crear Nueva Materia',
+            `<form id="form-new-course" class="space-y-3">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-xs font-bold mb-1">Código</label>
+                  <input id="nc-code" type="text" required placeholder="TUR-201" class="w-full px-3 py-2 rounded-xl border text-xs" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold mb-1">Semestre</label>
+                  <input id="nc-sem" type="text" required placeholder="3° Semestre" class="w-full px-3 py-2 rounded-xl border text-xs" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold mb-1">Nombre de la Materia</label>
+                <input id="nc-title" type="text" required placeholder="Introducción al Turismo" class="w-full px-3 py-2 rounded-xl border text-xs" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold mb-1">Descripción</label>
+                <textarea id="nc-desc" rows="2" required class="w-full px-3 py-2 rounded-xl border text-xs"></textarea>
+              </div>
+              <button type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold">Crear y Sincronizar Materia</button>
+            </form>`,
+            () => {
+              document.getElementById('form-new-course').addEventListener('submit', async e => {
+                e.preventDefault();
+                const now = Date.now();
+                const newCourse = normalizeCourseGrading({
+                  id: uid('course'),
+                  code: document.getElementById('nc-code').value.trim(),
+                  semester: document.getElementById('nc-sem').value.trim(),
+                  title: document.getElementById('nc-title').value.trim(),
+                  category: 'STEAM',
+                  teacher: 'Mtro. Francisco J. Tapia López',
+                  description: document.getElementById('nc-desc').value.trim(),
+                  color: 'from-indigo-600 to-blue-700',
+                  updatedAt: now,
+                  enrolledStudentIds: (appState.db.students || []).map(s => s.id),
+                  modules: []
+                });
+                appState.db.courses.push(newCourse);
+                closeModal();
+                renderMain();
+                await saveState(true);
+                showToast('Materia creada y sincronizada en la nube', 'success');
+              });
+            }
+          );
+        });
+      }
+    }
+
+    // ==================== REFRESCO SEGURO EN TIEMPO REAL ====================
+    function refreshActiveViewSafely() {
+      const modalOpen = !document.getElementById('modal-root').classList.contains('hidden');
+      if (modalOpen) {
+        refreshOpenAttendanceModalIfVisible();
+        return;
+      }
+      if (isUserTyping()) return;
+      if (Date.now() - appState.lastLocalMutationTs < 1800) return;
+
+      if (appState.session) {
+        renderMain();
+      } else {
+        renderAuth();
+      }
+    }
+
+    // Arranque inicial y ciclo continuo de sincronización cada 2.5s
+    renderMain();
+    syncNow({ push: false, silent: true, forceRender: true });
+
+    setInterval(() => {
+      if (document.hidden || appState.cloudSyncing) return;
+      syncNow({ push: false, silent: true, forceRender: false });
+    }, 2500);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && !appState.cloudSyncing) {
+        syncNow({ push: false, silent: true, forceRender: false });
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
