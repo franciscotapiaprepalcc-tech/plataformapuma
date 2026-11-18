@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PLATAFORMA PUMA STEAM | Aula Virtual</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Generador y Lector de Códigos QR -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
@@ -24,9 +26,62 @@
       0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
       50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
     }
+    /* Estilos limpios para renderizado de hipertexto generado por Gemini IA */
+    .rich-hypertext h1, .rich-hypertext h2, .rich-hypertext h3, .rich-hypertext h4 {
+      font-weight: 800;
+      color: #0f172a;
+      margin-top: 0.65rem;
+      margin-bottom: 0.35rem;
+      line-height: 1.3;
+    }
+    .rich-hypertext h3 { font-size: 0.95rem; }
+    .rich-hypertext h4 { font-size: 0.85rem; }
+    .rich-hypertext p { margin-bottom: 0.5rem; line-height: 1.55; }
+    .rich-hypertext ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+    .rich-hypertext ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+    .rich-hypertext li { margin-bottom: 0.25rem; }
+    .rich-hypertext a {
+      color: #2563eb;
+      text-decoration: underline;
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .rich-hypertext a:hover { color: #1d4ed8; }
+    .rich-hypertext blockquote, .rich-hypertext .callout {
+      border-left: 3px solid #6366f1;
+      background-color: #eef2ff;
+      padding: 0.55rem 0.8rem;
+      border-radius: 0.5rem;
+      margin: 0.5rem 0;
+      color: #1e1b4b;
+    }
+    .rich-hypertext table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6rem 0;
+      font-size: 0.75rem;
+    }
+    .rich-hypertext th, .rich-hypertext td {
+      border: 1px solid #cbd5e1;
+      padding: 0.4rem 0.55rem;
+      text-align: left;
+    }
+    .rich-hypertext th {
+      background-color: #f1f5f9;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .rich-hypertext code {
+      background-color: #f1f5f9;
+      padding: 0.1rem 0.3rem;
+      border-radius: 0.25rem;
+      font-family: monospace;
+      font-size: 0.75rem;
+    }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen">
+  <!-- Contenedor Principal -->
   <div id="app-root"></div>
 
   <!-- Modal Global -->
@@ -34,7 +89,7 @@
     <div id="modal-box" class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden my-8">
       <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
         <h3 id="modal-title" class="font-bold text-base"></h3>
-        <button id="modal-close-btn" class="text-slate-300 hover:text-white text-xl leading-none font-bold">&times;</button>
+        <button id="modal-close-btn" class="text-slate-300 hover:text-white text-xl leading-none font-bold cursor-pointer">&times;</button>
       </div>
       <div id="modal-body" class="p-6 max-h-[82vh] overflow-y-auto"></div>
     </div>
@@ -45,6 +100,8 @@
 
   <script>
   (() => {
+    'use strict';
+
     // ==================== CONSTANTES Y CONFIGURACIÓN ====================
     const STORAGE_KEY = 'puma_steam_lms_v2';
     const DELETED_COURSES_KEY = 'puma_steam_deleted_courses_v2';
@@ -57,7 +114,7 @@
     const ADMIN_PASS = '37rdo2910D';
     const SONORA_TIMEZONE = 'America/Hermosillo';
 
-    // ==================== ZONA HORARIA HERMOSILLO, SONORA ====================
+    // ==================== ZONA HORARIA HERMOSILLO, SONORA (UTC-7) ====================
     function getSonoraDateParts(dateObj = new Date()) {
       try {
         const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -114,6 +171,96 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+    }
+
+    // ==================== SANITIZADOR Y RENDERIZADOR DE HIPERTEXTO SEGURO ====================
+    function sanitizeHypertextHtml(rawInput) {
+      const str = String(rawInput ?? '').trim();
+      if (!str) return '';
+
+      const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(str);
+      if (!hasHtmlTags) {
+        const escaped = esc(str);
+        const linked = escaped.replace(
+          /(https?:\/\/[^\s<]+)/g,
+          '<a href="$1" target="_blank" rel="noopener noreferrer">$1 ↗</a>'
+        );
+        return linked
+          .split(/\n{2,}/)
+          .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+          .join('');
+      }
+
+      const template = document.createElement('template');
+      template.innerHTML = str;
+
+      const allowedTags = new Set([
+        'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S',
+        'H1', 'H2', 'H3', 'H4', 'UL', 'OL', 'LI',
+        'A', 'BLOCKQUOTE', 'CODE', 'PRE', 'DIV', 'SPAN',
+        'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'HR'
+      ]);
+
+      function cleanNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) return;
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          node.remove();
+          return;
+        }
+        const tag = node.tagName.toUpperCase();
+        if (!allowedTags.has(tag)) {
+          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'IFRAME' || tag === 'OBJECT' || tag === 'EMBED') {
+            node.remove();
+            return;
+          }
+          const parent = node.parentNode;
+          while (node.firstChild) {
+            parent.insertBefore(node.firstChild, node);
+          }
+          node.remove();
+          return;
+        }
+
+        Array.from(node.attributes).forEach(attr => {
+          const name = attr.name.toLowerCase();
+          const val = attr.value.trim();
+          if (name.startsWith('on')) {
+            node.removeAttribute(attr.name);
+            return;
+          }
+          if (tag === 'A' && name === 'href') {
+            if (!/^(https?:\/\/|mailto:|#)/i.test(val)) {
+              node.removeAttribute('href');
+            }
+          } else if (name === 'class') {
+            const safeClasses = val
+              .split(/\s+/)
+              .filter(c => /^(callout|bg-|text-|border-|p-|px-|py-|m-|mt-|mb-|rounded|font-|flex|gap-|grid|space-y-)[a-z0-9-]*$/i.test(c));
+            if (safeClasses.length) node.setAttribute('class', safeClasses.join(' '));
+            else node.removeAttribute('class');
+          } else if (tag === 'A' && (name === 'target' || name === 'rel')) {
+            // Se normalizan abajo
+          } else {
+            node.removeAttribute(attr.name);
+          }
+        });
+
+        if (tag === 'A' && node.getAttribute('href')) {
+          node.setAttribute('target', '_blank');
+          node.setAttribute('rel', 'noopener noreferrer');
+        }
+
+        Array.from(node.childNodes).forEach(child => cleanNode(child));
+      }
+
+      Array.from(template.content.childNodes).forEach(child => cleanNode(child));
+      return template.innerHTML;
+    }
+
+    function renderHypertextBlock(rawContent) {
+      const clean = sanitizeHypertextHtml(rawContent);
+      if (!clean) return '';
+      return `<div class="rich-hypertext text-xs text-slate-700">${clean}</div>`;
     }
 
     // ==================== FILTRO DE ALUMNO DEMO Y CURSOS ELIMINADOS ====================
@@ -179,16 +326,25 @@
             id: 'm-1',
             title: 'Secuencia 1: Ciudadanía y Seguridad Digital',
             updatedAt: 1,
-            teacherTranscript: {
-              rawText: '',
-              summary: '',
-              updatedAt: 0
-            },
+            teacherTranscript: { rawText: '', summary: '', updatedAt: 0 },
             resources: [
-              { id: 'r-1', type: 'Lectura', title: 'Guía de Buenas Prácticas en la Red', detail: 'Documento base sobre privacidad, contraseñas seguras y huella digital.', updatedAt: 1 }
+              {
+                id: 'r-1',
+                type: 'Lectura',
+                title: 'Guía de Buenas Prácticas en la Red',
+                detail: '<h3>📘 Ciudadanía y Seguridad Digital</h3><p>Documento base sobre <strong>privacidad</strong>, contraseñas robustas y gestión de la huella digital en entornos escolares.</p><blockquote><strong>💡 Recomendación:</strong> Activa siempre la verificación en dos pasos en tus cuentas académicas.</blockquote>',
+                updatedAt: 1
+              }
             ],
             assignments: [
-              { id: 't-1', title: 'Práctica 1: Mapa de Huella Digital', instructions: 'Elabora un documento identificando 5 riesgos digitales y cómo mitigarlos.', dueDate: '2026-11-22', maxPoints: 100, updatedAt: 1 }
+              {
+                id: 't-1',
+                title: 'Práctica 1: Mapa de Huella Digital',
+                instructions: '<h3>🎯 Objetivo</h3><p>Elabora un documento o presentación identificando <strong>5 riesgos digitales</strong> y cómo mitigarlos en tu vida estudiantil.</p>',
+                dueDate: '2026-11-22',
+                maxPoints: 100,
+                updatedAt: 1
+              }
             ]
           }
         ]
@@ -218,10 +374,23 @@
             updatedAt: 1,
             teacherTranscript: { rawText: '', summary: '', updatedAt: 0 },
             resources: [
-              { id: 'r-4', type: 'Formulario', title: 'Fórmulas de Torque (τ = F · d · sen θ)', detail: 'Incluye convención de signos y ejemplos resueltos.', updatedAt: 1 }
+              {
+                id: 'r-4',
+                type: 'Formulario',
+                title: 'Fórmulas de Torque (τ = F · d · sen θ)',
+                detail: '<h3>📐 Momento de Torsión</h3><p>Fórmula fundamental: <code>τ = F · d · sen(θ)</code>. Incluye convención de signos (+ antihorario, - horario) y unidades en <strong>N·m</strong>.</p>',
+                updatedAt: 1
+              }
             ],
             assignments: [
-              { id: 't-3', title: 'Serie de Ejercicios: Palanca y Ángulos', instructions: 'Calcula el momento de torsión para una palanca de 0.60 m con fuerza de 200 N.', dueDate: '2026-11-25', maxPoints: 100, updatedAt: 1 }
+              {
+                id: 't-3',
+                title: 'Serie de Ejercicios: Palanca y Ángulos',
+                instructions: '<h3>🎯 Serie Práctica</h3><p>Calcula el momento de torsión para una llave industrial de <strong>0.60 m</strong> aplicando una fuerza de <strong>200 N</strong> con ángulos de 90°, 60°, 30° y 0°.</p>',
+                dueDate: '2026-11-25',
+                maxPoints: 100,
+                updatedAt: 1
+              }
             ]
           }
         ]
@@ -251,10 +420,23 @@
             updatedAt: 1,
             teacherTranscript: { rawText: '', summary: '', updatedAt: 0 },
             resources: [
-              { id: 'r-5', type: 'Guía', title: 'Regla de los Tercios y Larga Exposición', detail: 'Parámetros básicos de apertura, velocidad de obturación e ISO.', updatedAt: 1 }
+              {
+                id: 'r-5',
+                type: 'Guía Interactiva',
+                title: 'Regla de los Tercios y Triángulo de Exposición',
+                detail: '<h3>📷 Composición y Luz</h3><p>Parámetros esenciales de <strong>apertura de diafragma (f/)</strong>, <strong>velocidad de obturación</strong> y sensibilidad <strong>ISO</strong>.</p>',
+                updatedAt: 1
+              }
             ],
             assignments: [
-              { id: 't-4', title: 'Portafolio: Luz y Sombra en Cananea', instructions: 'Sube el enlace a una carpeta con 3 fotografías originales.', dueDate: '2026-12-01', maxPoints: 100, updatedAt: 1 }
+              {
+                id: 't-4',
+                title: 'Portafolio: Luz y Sombra en Cananea',
+                instructions: '<h3>🎯 Portafolio Fotográfico</h3><p>Comparte el enlace a una carpeta con <strong>3 fotografías originales</strong> aplicando la regla de los tercios.</p>',
+                dueDate: '2026-12-01',
+                maxPoints: 100,
+                updatedAt: 1
+              }
             ]
           }
         ]
@@ -354,7 +536,6 @@
         dbObj.meta.deletedStudents[id] = Math.max(Number(dbObj.meta.deletedStudents[id] || 0), 9999999999999);
       });
 
-      // Filtrar cursos eliminados explícitamente
       if (Array.isArray(dbObj.courses)) {
         dbObj.courses = dbObj.courses
           .filter(c => {
@@ -659,7 +840,6 @@
         });
       });
 
-      // Estudiantes
       const stuMap = new Map();
       [...remote.students, ...local.students].forEach(stu => {
         if (!stu || !stu.id || isDemoStudentRecord(stu)) return;
@@ -670,7 +850,6 @@
         if (!prev || itemTs >= Number(prev.updatedAt || 0)) stuMap.set(stu.id, stu);
       });
 
-      // Entregas
       const subMap = new Map();
       [...remote.submissions, ...local.submissions].forEach(sub => {
         if (!sub || !sub.courseId || !sub.assignmentId || !sub.studentId) return;
@@ -683,7 +862,6 @@
         if (!prev || itemTs >= Number(prev.updatedAt || 0)) subMap.set(key, sub);
       });
 
-      // Asistencias por materia (courseId|date|studentId)
       const attMap = new Map();
       [...remote.attendance, ...local.attendance].forEach(att => {
         if (!att || !att.courseId || !att.date || !att.studentId) return;
@@ -993,7 +1171,7 @@
       };
     }
 
-    // ==================== NOTIFICACIONES Y MODALES ====================
+    // ==================== NOTIFICACIONES Y MODALES (SIN ALERT NI CONFIRM) ====================
     function showToast(msg, type = 'info') {
       const root = document.getElementById('toast-root');
       if (!root) return;
@@ -1004,7 +1182,7 @@
       };
       const el = document.createElement('div');
       el.className = `${colors[type] || colors.info} px-4 py-3 rounded-xl shadow-lg text-xs font-semibold flex items-center justify-between gap-3 transition-all`;
-      el.innerHTML = `<span>${esc(msg)}</span><button class="opacity-75 hover:opacity-100 font-bold">&times;</button>`;
+      el.innerHTML = `<span>${esc(msg)}</span><button class="opacity-75 hover:opacity-100 font-bold cursor-pointer">&times;</button>`;
       el.querySelector('button').addEventListener('click', () => el.remove());
       root.appendChild(el);
       setTimeout(() => el.remove(), 3600);
@@ -1052,17 +1230,190 @@
       document.getElementById('modal-body').innerHTML = '';
     }
 
+    function openConfirmModal(title, message, onConfirm) {
+      openModal(
+        title,
+        `<div class="space-y-4">
+          <p class="text-xs sm:text-sm text-slate-700 leading-relaxed">${esc(message)}</p>
+          <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <button type="button" id="btn-confirm-cancel" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer">Cancelar</button>
+            <button type="button" id="btn-confirm-accept" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer">Confirmar</button>
+          </div>
+        </div>`,
+        () => {
+          document.getElementById('btn-confirm-cancel').addEventListener('click', closeModal);
+          document.getElementById('btn-confirm-accept').addEventListener('click', async () => {
+            closeModal();
+            if (typeof onConfirm === 'function') await onConfirm();
+          });
+        },
+        'max-w-md'
+      );
+    }
+
     document.getElementById('modal-close-btn').addEventListener('click', closeModal);
 
-    // ==================== TRANSCRIPCIÓN DEL MAESTRO + IA GEMINI ====================
+    // ==================== GENERADOR IA GEMINI (HIPERTEXTO Y TRANSCRIPCIÓN) ====================
+    async function callGeminiTextOrHtml(promptText, temperature = 0.4) {
+      const apiKey = getGeminiApiKey();
+      const models = ['gemini-3-flash-preview', 'gemini-2.5-flash'];
+      for (const modelName of models) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`;
+          const res = await fetchWithTimeout(
+            url,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: promptText }] }],
+                generationConfig: { temperature }
+              })
+            },
+            14000
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (candidateText) {
+              const fenceOpen = new RegExp('^\\x60\\x60\\x60(?:html)?\\s*', 'i');
+              const fenceClose = new RegExp('\\s*\\x60\\x60\\x60$', 'i');
+              return candidateText
+                .replace(fenceOpen, '')
+                .replace(fenceClose, '')
+                .trim();
+            }
+          }
+        } catch (e) {}
+      }
+      return '';
+    }
+
+    async function generateHypertextMaterialWithAI({ courseTitle, sequenceTitle, resourceType, resourceTitle, extraPrompt }) {
+      const cleanTitle = String(resourceTitle || 'Recurso Didáctico').trim();
+      const cleanType = String(resourceType || 'Lectura').trim();
+      const cleanExtra = String(extraPrompt || '').trim();
+
+      const prompt = `Actúa como un diseñador instruccional experto de bachillerato en la Plataforma PUMA STEAM (Cananea, Sonora).
+Genera contenido didáctico en HIPERTEXTO HTML limpio y bien estructurado para un material de clase.
+Materia: "${courseTitle}"
+Secuencia: "${sequenceTitle}"
+Tipo de recurso: "${cleanType}"
+Título del material: "${cleanTitle}"
+Enfoque o instrucciones adicionales del docente: "${cleanExtra || 'Desarrollo claro, práctico y motivador para estudiantes de preparatoria.'}"
+
+Reglas estrictas de salida:
+- Devuelve ÚNICAMENTE fragmentos de HTML válido (sin etiquetas <html>, <head>, <body>).
+- Usa etiquetas semánticas: <h3>, <h4>, <p>, <ul>, <ol>, <li>, <strong>, <em>, <blockquote>, <table>, <thead>, <tbody>, <tr>, <th>, <td> y enlaces reales/útiles con <a href="https://..." target="_blank">...</a> (por ejemplo a Wikipedia en español, Khan Academy, PhET o recursos educativos pertinentes al tema).
+- Incluye:
+  1. Un encabezado <h3> atractivo y una breve introducción contextual.
+  2. Desarrollo estructurado en secciones con conceptos clave en <strong> y listas organizadas.
+  3. Un cuadro destacado <blockquote> con un dato clave, fórmula o consejo práctico.
+  4. Una sección de "Enlaces y Recursos de Consulta" con hipervínculos clicables relevantes al tema.`;
+
+      const aiHtml = await callGeminiTextOrHtml(prompt, 0.45);
+      if (aiHtml) return sanitizeHypertextHtml(aiHtml);
+
+      const topicQuery = encodeURIComponent(`${cleanTitle} ${courseTitle}`);
+      return sanitizeHypertextHtml(`
+        <h3>📘 ${esc(cleanTitle)} (${esc(cleanType)})</h3>
+        <p>Este material forma parte de la secuencia <strong>${esc(sequenceTitle)}</strong> en la asignatura <strong>${esc(courseTitle)}</strong>. Su propósito es brindarte los fundamentos teóricos y prácticos necesarios para dominar el tema.</p>
+        ${cleanExtra ? `<p><strong>Enfoque del docente:</strong> ${esc(cleanExtra)}</p>` : ''}
+        <h4>🔹 Conceptos Clave a Revisar</h4>
+        <ul>
+          <li><strong>Fundamentos esenciales:</strong> Comprensión de los principios básicos asociados a <em>${esc(cleanTitle)}</em>.</li>
+          <li><strong>Aplicación práctica:</strong> Identificación de ejemplos reales en el entorno académico, tecnológico y cotidiano.</li>
+          <li><strong>Análisis crítico:</strong> Verificación de fuentes confiables y argumentación estructurada.</li>
+        </ul>
+        <blockquote>
+          <strong>💡 Nota importante de estudio:</strong> Toma apuntes de los conceptos principales y prepara tus dudas para comentarlas durante la sesión presencial.
+        </blockquote>
+        <h4>🔗 Enlaces de Consulta y Profundización</h4>
+        <ul>
+          <li><a href="https://es.wikipedia.org/w/index.php?search=${topicQuery}" target="_blank">Consultar artículo de referencia en Wikipedia (${esc(cleanTitle)}) ↗</a></li>
+          <li><a href="https://es.khanacademy.org/search?page_search_query=${topicQuery}" target="_blank">Explorar lecciones interactivas en Khan Academy ↗</a></li>
+        </ul>
+      `);
+    }
+
+    async function generateHypertextAssignmentWithAI({ courseTitle, sequenceTitle, assignTitle, maxPoints, extraPrompt }) {
+      const cleanTitle = String(assignTitle || 'Actividad de Aprendizaje').trim();
+      const pts = Number(maxPoints || 100);
+      const cleanExtra = String(extraPrompt || '').trim();
+
+      const prompt = `Actúa como un docente experto de bachillerato en la Plataforma PUMA STEAM (Cananea, Sonora).
+Redacta las instrucciones completas y la rúbrica de evaluación en HIPERTEXTO HTML enriquecido para una actividad/asignación de clase.
+Materia: "${courseTitle}"
+Secuencia: "${sequenceTitle}"
+Título de la actividad: "${cleanTitle}"
+Puntaje máximo: ${pts} puntos
+Indicaciones o tema del docente: "${cleanExtra || 'Actividad práctica con entregable digital y criterios claros de evaluación.'}"
+
+Reglas estrictas de salida:
+- Devuelve ÚNICAMENTE fragmentos de HTML válido (sin etiquetas <html>, <head>, <body>).
+- Usa <h3>, <h4>, <p>, <ol>, <ul>, <li>, <strong>, <blockquote>, <table>, <thead>, <tbody>, <tr>, <th>, <td> y enlaces clicables <a href="https://..." target="_blank"> cuando sean útiles.
+- Incluye:
+  1. <h3>Objetivo de la Actividad</h3> y descripción breve.
+  2. <h4>Instrucciones Paso a Paso</h4> con lista numerada <ol>.
+  3. <h4>Formato de Entrega</h4> (enlace de Google Drive/Canva/documento o respuesta directa en plataforma).
+  4. <h4>Rúbrica de Evaluación (${pts} pts)</h4> en una tabla <table> con criterios y porcentajes/puntos que sumen ${pts} puntos.`;
+
+      const aiHtml = await callGeminiTextOrHtml(prompt, 0.4);
+      if (aiHtml) return sanitizeHypertextHtml(aiHtml);
+
+      const p1 = Math.round(pts * 0.4);
+      const p2 = Math.round(pts * 0.4);
+      const p3 = pts - p1 - p2;
+      const searchUrl = `https://scholar.google.es/scholar?q=${encodeURIComponent(cleanTitle + ' ' + courseTitle)}`;
+
+      return sanitizeHypertextHtml(`
+        <h3>🎯 ${esc(cleanTitle)}</h3>
+        <p><strong>Propósito:</strong> Aplicar los aprendizajes adquiridos en <strong>${esc(sequenceTitle)}</strong> (${esc(courseTitle)}) mediante un producto estructurado y verificable.</p>
+        ${cleanExtra ? `<p><strong>Consigna específica:</strong> ${esc(cleanExtra)}</p>` : ''}
+        <h4>📋 Instrucciones Paso a Paso</h4>
+        <ol>
+          <li><strong>Investigación y análisis:</strong> Revisa los materiales de apoyo de la secuencia y consulta fuentes académicas confiables como <a href="${searchUrl}" target="_blank">Google Académico ↗</a>.</li>
+          <li><strong>Desarrollo del producto:</strong> Elabora tu entregable cuidando la claridad, ortografía, fundamentación técnica y presentación visual.</li>
+          <li><strong>Entrega en plataforma:</strong> Sube tu archivo a Google Drive / Canva (con permisos de lectura activados) y pega el enlace o redacta tu respuesta en el botón <em>Entregar Actividad</em>.</li>
+        </ol>
+        <blockquote>
+          <strong>⚠️ Importante:</strong> Verifica que cualquier enlace externo compartido tenga acceso público o institucional antes de enviarlo.
+        </blockquote>
+        <h4>📊 Rúbrica de Evaluación (${pts} puntos)</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Criterio</th>
+              <th>Descripción esperada</th>
+              <th>Puntaje</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Dominio del Contenido</strong></td>
+              <td>Desarrollo preciso, completo y fundamentado de todos los puntos solicitados.</td>
+              <td>${p1} pts</td>
+            </tr>
+            <tr>
+              <td><strong>Aplicación Práctica</strong></td>
+              <td>Claridad en ejemplos, procedimientos, análisis o evidencias presentadas.</td>
+              <td>${p2} pts</td>
+            </tr>
+            <tr>
+              <td><strong>Presentación y Puntualidad</strong></td>
+              <td>Orden, redacción adecuada, citas/enlaces funcionales y entrega en tiempo.</td>
+              <td>${p3} pts</td>
+            </tr>
+          </tbody>
+        </table>
+      `);
+    }
+
     async function generateTeacherSummaryWithAI(rawTranscript, courseTitle, sequenceTitle) {
       const text = String(rawTranscript || '').trim();
       if (!text) return '';
 
-      const apiKey = getGeminiApiKey();
-      if (apiKey) {
-        try {
-          const prompt = `Eres un asistente pedagógico de nivel bachillerato en la Plataforma PUMA STEAM.
+      const prompt = `Eres un asistente pedagógico de nivel bachillerato en la Plataforma PUMA STEAM.
 Materia: "${courseTitle}"
 Secuencia didáctica: "${sequenceTitle}"
 
@@ -1075,27 +1426,9 @@ Transcripción del docente:
 """
 ${text}
 """`;
-          const res = await fetchWithTimeout(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.35 }
-              })
-            },
-            12000
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (candidateText) return candidateText.trim();
-          }
-        } catch (e) {}
-      }
+      const aiText = await callGeminiTextOrHtml(prompt, 0.35);
+      if (aiText) return aiText;
 
-      // Motor estructurador inteligente integrado (fallback automático sin requerir llave externa)
       const cleanSentences = text
         .replace(/\s+/g, ' ')
         .split(/(?<=[.?!;])\s+|\n+/)
@@ -1151,22 +1484,22 @@ ${text}
           <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-start justify-between gap-3">
             <div>
               <p class="text-xs font-bold text-indigo-950">Captura de voz en aula + Resumen IA Gemini</p>
-              <p class="text-[11px] text-indigo-700 mt-0.5">Activa el micrófono mientras explicas el tema. El sistema detectará tu voz en español y generará un resumen estructurado para tus estudiantes en esta secuencia.</p>
+              <p class="text-[11px] text-indigo-700 mt-0.5">Activa el micrófono mientras explicas el tema. El sistema detectará tu voz en español (es-MX) y generará un resumen estructurado para tus estudiantes en esta secuencia.</p>
             </div>
             <span id="mic-status-pill" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">Micrófono en espera</span>
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
-            <button type="button" id="btn-start-mic" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs">
+            <button type="button" id="btn-start-mic" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer">
               <span>🎙️ Iniciar Grabación de Voz</span>
             </button>
-            <button type="button" id="btn-stop-mic" class="hidden px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold">
+            <button type="button" id="btn-stop-mic" class="hidden px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold cursor-pointer">
               ⏹ Detener Micrófono
             </button>
-            <button type="button" id="btn-generate-ai-summary" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs">
+            <button type="button" id="btn-generate-ai-summary" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer">
               <span>✨ Generar Resumen con Gemini IA</span>
             </button>
-            <button type="button" id="btn-clear-transcript" class="ml-auto px-3 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-semibold">
+            <button type="button" id="btn-clear-transcript" class="ml-auto px-3 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-semibold cursor-pointer">
               Limpiar
             </button>
           </div>
@@ -1188,14 +1521,14 @@ ${text}
           <details class="bg-slate-50 border border-slate-200 rounded-xl p-3">
             <summary class="text-[11px] font-bold text-slate-600 cursor-pointer">Configuración opcional de API Key de Google Gemini</summary>
             <div class="mt-2 flex gap-2">
-              <input id="inp-gemini-key" type="password" value="${esc(getGeminiApiKey())}" placeholder="AIzaSy... (Opcional, usa motor IA integrado si se deja vacío)" class="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 text-xs" />
-              <button type="button" id="btn-save-gemini-key" class="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-semibold">Guardar Key</button>
+              <input id="inp-gemini-key" type="password" value="${esc(getGeminiApiKey())}" placeholder="AIzaSy... (Opcional)" class="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 text-xs" />
+              <button type="button" id="btn-save-gemini-key" class="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-semibold cursor-pointer">Guardar Key</button>
             </div>
           </details>
 
           <div class="flex justify-end gap-2 pt-3 border-t border-slate-200">
-            <button type="button" id="btn-cancel-tr" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancelar</button>
-            <button type="button" id="btn-save-tr" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs">Guardar y Publicar en la Secuencia</button>
+            <button type="button" id="btn-cancel-tr" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Cancelar</button>
+            <button type="button" id="btn-save-tr" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer">Guardar y Publicar en la Secuencia</button>
           </div>
         </div>`,
         () => {
@@ -1304,7 +1637,7 @@ ${text}
             const liveMod = (liveCourse?.modules || []).find(m => m.id === moduleId);
             if (!liveMod) return;
 
-            let rawText = rawEl.value.trim();
+            const rawText = rawEl.value.trim();
             let summaryText = sumEl.value.trim();
             if (rawText && !summaryText) {
               summaryText = await generateTeacherSummaryWithAI(rawText, liveCourse.title, liveMod.title);
@@ -1362,7 +1695,7 @@ ${text}
                       .map(
                         stu => `<div class="py-1.5 flex items-center justify-between gap-2 text-xs">
                           <span class="font-medium text-slate-800">${esc(stu.name)} <span class="text-slate-400">(@${esc(stu.username)})</span></span>
-                          <button type="button" data-manual-att-stu="${esc(stu.id)}" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold">+ Marcar asistencia</button>
+                          <button type="button" data-manual-att-stu="${esc(stu.id)}" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold cursor-pointer">+ Marcar asistencia</button>
                         </div>`
                       )
                       .join('')}
@@ -1386,7 +1719,7 @@ ${text}
                             <span class="font-bold text-emerald-900">✓ ${esc(r.studentName)}</span>
                             <span class="text-slate-500 ml-1">${esc(r.time || '')} hrs</span>
                           </div>
-                          <button type="button" data-del-att-stu="${esc(r.studentId)}" class="px-2 py-0.5 rounded-md bg-rose-100 hover:bg-rose-200 text-rose-700 text-[11px] font-semibold">Eliminar</button>
+                          <button type="button" data-del-att-stu="${esc(r.studentId)}" class="px-2 py-0.5 rounded-md bg-rose-100 hover:bg-rose-200 text-rose-700 text-[11px] font-semibold cursor-pointer">Eliminar</button>
                         </div>`
                       )
                       .join('')}
@@ -1407,7 +1740,11 @@ ${text}
           const exists = (appState.db.attendance || []).find(
             a => a.courseId === courseId && a.date === dateStr && a.studentId === sid
           );
-          if (!exists) {
+          const nowTs = Date.now();
+          if (exists) {
+            exists.createdAtTs = nowTs;
+            exists.time = getNowTimeShort();
+          } else {
             appState.db.attendance.push({
               id: uid('att'),
               courseId,
@@ -1416,12 +1753,12 @@ ${text}
               studentName: stu.name,
               date: dateStr,
               time: getNowTimeShort(),
-              createdAtTs: Date.now()
+              createdAtTs: nowTs
             });
-            refreshOpenAttendanceModalIfVisible();
-            await saveState(false);
-            showToast(`Asistencia marcada a ${stu.name}`, 'success');
           }
+          refreshOpenAttendanceModalIfVisible();
+          await saveState(false);
+          showToast(`Asistencia marcada a ${stu.name}`, 'success');
         });
       });
 
@@ -1482,7 +1819,7 @@ ${text}
             <label class="block text-xs font-bold text-slate-700 mb-1">¿Sin cámara? Ingresa el código manual:</label>
             <div class="flex gap-2">
               <input id="inp-manual-qr" type="text" placeholder="PUMA_ASISTENCIA|..." class="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono" />
-              <button id="btn-submit-manual-qr" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Validar</button>
+              <button id="btn-submit-manual-qr" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer">Validar</button>
             </div>
           </div>
         </div>`,
@@ -1538,7 +1875,7 @@ ${text}
                 <h4 class="font-bold text-slate-900 text-base">${esc(activeStudent.name)}</h4>
                 <p class="text-xs text-slate-600">Asistencia registrada en <strong>${esc(targetCourse ? targetCourse.title : scannedCourseId)}</strong> (${esc(scannedDate)}).</p>
                 <p id="att-sync-status" class="text-xs font-semibold text-indigo-600">Sincronizando en tiempo real...</p>
-                <button id="btn-close-qr-done" class="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">Aceptar</button>
+                <button id="btn-close-qr-done" class="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold cursor-pointer">Aceptar</button>
               </div>`;
               document.getElementById('btn-close-qr-done').addEventListener('click', () => {
                 closeModal();
@@ -1599,8 +1936,8 @@ ${text}
               </div>
 
               <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
-                <button id="tab-login" class="py-2 rounded-lg text-xs font-bold ${appState.authMode === 'login' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'}">Iniciar Sesión</button>
-                <button id="tab-register" class="py-2 rounded-lg text-xs font-bold ${appState.authMode === 'register' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'}">Nuevo Estudiante</button>
+                <button id="tab-login" class="py-2 rounded-lg text-xs font-bold cursor-pointer ${appState.authMode === 'login' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'}">Iniciar Sesión</button>
+                <button id="tab-register" class="py-2 rounded-lg text-xs font-bold cursor-pointer ${appState.authMode === 'register' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'}">Nuevo Estudiante</button>
               </div>
 
               ${
@@ -1614,7 +1951,7 @@ ${text}
                         <label class="block text-xs font-bold text-slate-700 mb-1">Contraseña</label>
                         <input id="login-pass" type="password" required placeholder="••••••••" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
                       </div>
-                      <button type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md">Entrar al Aula Virtual</button>
+                      <button type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md cursor-pointer">Entrar al Aula Virtual</button>
                     </form>`
                   : `<form id="form-register" class="space-y-3">
                       <div>
@@ -1635,7 +1972,7 @@ ${text}
                         <label class="block text-xs font-bold text-slate-700 mb-1">Contraseña</label>
                         <input id="reg-pass" type="password" required value="aB123456." class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm" />
                       </div>
-                      <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md">Crear Cuenta de Estudiante</button>
+                      <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md cursor-pointer">Crear Cuenta de Estudiante</button>
                     </form>`
               }
             </div>
@@ -1722,7 +2059,7 @@ ${text}
       }
     }
 
-    // ==================== DETALLE DE MATERIA, SECUENCIAS Y TRANSCRIPCIÓN ====================
+    // ==================== DETALLE DE MATERIA, SECUENCIAS, HIPERTEXTO Y CALIFICACIONES ====================
     function renderCourseDetail() {
       const container = document.getElementById('view-content');
       const course = getCourseById(appState.selectedCourseId);
@@ -1744,7 +2081,7 @@ ${text}
           <div class="bg-gradient-to-r ${esc(course.color || 'from-indigo-600 to-blue-700')} rounded-3xl p-6 text-white shadow-lg">
             <div class="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <button id="btn-back-courses" class="text-xs font-bold bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl mb-3 inline-flex items-center gap-1">← Volver a Materias</button>
+                <button id="btn-back-courses" class="text-xs font-bold bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl mb-3 inline-flex items-center gap-1 cursor-pointer">← Volver a Materias</button>
                 <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider opacity-90">
                   <span>${esc(course.code)}</span> · <span>${esc(course.semester)}</span> · <span>${esc(course.category)}</span>
                 </div>
@@ -1754,17 +2091,17 @@ ${text}
               <div class="flex flex-wrap gap-2">
                 ${
                   isAdmin
-                    ? `<button id="btn-take-qr-att" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md">📷 Pase de Lista QR (${esc(getTodayFormatted())})</button>
-                       <button id="btn-delete-this-course" class="px-3.5 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-xs">🗑 Eliminar Materia</button>`
-                    : `<button id="btn-stu-scan-qr" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md">📷 Escanear QR de Asistencia</button>`
+                    ? `<button id="btn-take-qr-att" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer">📷 Pase de Lista QR (${esc(getTodayFormatted())})</button>
+                       <button id="btn-delete-this-course" class="px-3.5 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-xs cursor-pointer">🗑 Eliminar Materia</button>`
+                    : `<button id="btn-stu-scan-qr" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer">📷 Escanear QR de Asistencia</button>`
                 }
               </div>
             </div>
 
             <div class="flex flex-wrap gap-2 mt-6 pt-4 border-t border-white/20">
-              <button data-course-tab="content" class="px-4 py-2 rounded-xl text-xs font-bold ${appState.courseTab === 'content' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📚 Secuencias (${(course.modules || []).length})</button>
-              <button data-course-tab="gradebook" class="px-4 py-2 rounded-xl text-xs font-bold ${appState.courseTab === 'gradebook' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📊 Libro de Calificaciones (100 pts)</button>
-              <button data-course-tab="attendance" class="px-4 py-2 rounded-xl text-xs font-bold ${appState.courseTab === 'attendance' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📋 Libro de Asistencia</button>
+              <button data-course-tab="content" class="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${appState.courseTab === 'content' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📚 Secuencias (${(course.modules || []).length})</button>
+              <button data-course-tab="gradebook" class="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${appState.courseTab === 'gradebook' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📊 Libro de Calificaciones (100 pts)</button>
+              <button data-course-tab="attendance" class="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${appState.courseTab === 'attendance' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📋 Libro de Asistencia</button>
             </div>
           </div>
 
@@ -1785,17 +2122,22 @@ ${text}
 
       const delCourseBtn = document.getElementById('btn-delete-this-course');
       if (delCourseBtn) {
-        delCourseBtn.addEventListener('click', async () => {
-          if (!confirm(`¿Seguro que deseas eliminar permanentemente la materia "${course.title}"? Se sincronizará la baja en toda la nube.`)) return;
-          const now = Date.now() + 5000;
-          appState.db.meta.deletedCourses[course.id] = now;
-          savePersistedDeletedCourses(appState.db.meta.deletedCourses);
-          appState.db.courses = (appState.db.courses || []).filter(c => c.id !== course.id);
-          appState.selectedCourseId = null;
-          appState.activeView = 'courses';
-          renderMain();
-          await saveState(true);
-          showToast('Materia eliminada permanentemente de la nube', 'info');
+        delCourseBtn.addEventListener('click', () => {
+          openConfirmModal(
+            'Eliminar Materia de la Nube',
+            `¿Seguro que deseas eliminar permanentemente la materia "${course.title}"? Se sincronizará la baja en todos los dispositivos.`,
+            async () => {
+              const now = Date.now() + 5000;
+              appState.db.meta.deletedCourses[course.id] = now;
+              savePersistedDeletedCourses(appState.db.meta.deletedCourses);
+              appState.db.courses = (appState.db.courses || []).filter(c => c.id !== course.id);
+              appState.selectedCourseId = null;
+              appState.activeView = 'courses';
+              renderMain();
+              await saveState(true);
+              showToast('Materia eliminada permanentemente de la nube', 'info');
+            }
+          );
         });
       }
 
@@ -1808,7 +2150,7 @@ ${text}
 
       const tabPanel = document.getElementById('course-tab-panel');
 
-      // -------------------- PESTAÑA 1: SECUENCIAS + TRANSCRIPCIÓN DEL MAESTRO --------------------
+      // -------------------- PESTAÑA 1: SECUENCIAS + TRANSCRIPCIÓN + HIPERTEXTO --------------------
       if (appState.courseTab === 'content') {
         tabPanel.innerHTML = `
           <div class="space-y-4">
@@ -1816,7 +2158,7 @@ ${text}
               <h3 class="font-bold text-slate-900 text-base">Secuencias Didácticas de la Materia</h3>
               ${
                 isAdmin
-                  ? `<button id="btn-add-module" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs">+ Nueva Secuencia</button>`
+                  ? `<button id="btn-add-module" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer">+ Nueva Secuencia</button>`
                   : ''
               }
             </div>
@@ -1825,7 +2167,7 @@ ${text}
               (course.modules || []).length === 0
                 ? `<div class="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p class="text-sm text-slate-500">Aún no hay secuencias creadas en esta materia.</p>
-                    ${isAdmin ? `<button id="btn-empty-add-module" class="mt-3 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">+ Crear Primera Secuencia</button>` : ''}
+                    ${isAdmin ? `<button id="btn-empty-add-module" class="mt-3 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer">+ Crear Primera Secuencia</button>` : ''}
                   </div>`
                 : (course.modules || [])
                     .map(mod => {
@@ -1839,12 +2181,12 @@ ${text}
                             ${
                               isAdmin
                                 ? `<div class="flex flex-wrap items-center gap-2">
-                                    <button data-transcribe-mod="${esc(mod.id)}" class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold flex items-center gap-1">
+                                    <button data-transcribe-mod="${esc(mod.id)}" class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold flex items-center gap-1 cursor-pointer">
                                       🎙️ Transcripción del Maestro
                                     </button>
-                                    <button data-add-res="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-semibold">+ Material</button>
-                                    <button data-add-ass="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-xs font-semibold">+ Actividad</button>
-                                    <button data-del-mod="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-xs font-semibold">Eliminar</button>
+                                    <button data-add-res="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-semibold cursor-pointer">+ Material</button>
+                                    <button data-add-ass="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-xs font-semibold cursor-pointer">+ Actividad</button>
+                                    <button data-del-mod="${esc(mod.id)}" class="px-2.5 py-1 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-xs font-semibold cursor-pointer">Eliminar</button>
                                   </div>`
                                 : ''
                             }
@@ -1861,7 +2203,7 @@ ${text}
                                       </span>
                                       ${
                                         isAdmin
-                                          ? `<button data-transcribe-mod="${esc(mod.id)}" class="text-[11px] font-bold text-indigo-700 hover:underline">Editar / Volver a grabar</button>`
+                                          ? `<button data-transcribe-mod="${esc(mod.id)}" class="text-[11px] font-bold text-indigo-700 hover:underline cursor-pointer">Editar / Volver a grabar</button>`
                                           : ''
                                       }
                                     </div>
@@ -1880,31 +2222,38 @@ ${text}
                                     }
                                   </div>`
                                 : isAdmin
-                                ? `<div class="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-3 flex items-center justify-between">
+                                ? `<div class="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-3 flex items-center justify-between gap-2">
                                     <span class="text-xs text-slate-500">🎙️ Usa el micrófono en clase para generar un resumen automático con IA de tu explicación en esta secuencia.</span>
-                                    <button data-transcribe-mod="${esc(mod.id)}" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shrink-0">Abrir Transcripción</button>
+                                    <button data-transcribe-mod="${esc(mod.id)}" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold shrink-0 cursor-pointer">Abrir Transcripción</button>
                                   </div>`
                                 : ''
                             }
 
-                            <!-- Materiales -->
+                            <!-- Materiales en Hipertexto -->
                             <div>
                               <h5 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Materiales y Recursos</h5>
                               ${
                                 (mod.resources || []).length === 0
                                   ? `<p class="text-xs text-slate-400 italic">Sin materiales registrados.</p>`
-                                  : `<div class="space-y-2">
+                                  : `<div class="space-y-2.5">
                                       ${(mod.resources || [])
                                         .map(
-                                          r => `<div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-2">
-                                            <div>
-                                              <span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase">${esc(r.type)}</span>
-                                              <p class="font-bold text-xs text-slate-800 mt-1">${esc(r.title)}</p>
-                                              <p class="text-xs text-slate-600 mt-0.5">${esc(r.detail)}</p>
+                                          r => `<div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-3">
+                                            <div class="flex-1 min-w-0">
+                                              <div class="flex flex-wrap items-center gap-2">
+                                                <span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase">${esc(r.type)}</span>
+                                                <p class="font-bold text-xs sm:text-sm text-slate-900">${esc(r.title)}</p>
+                                              </div>
+                                              <div class="mt-2 bg-white p-3 rounded-xl border border-slate-200/80">
+                                                ${renderHypertextBlock(r.detail)}
+                                              </div>
                                             </div>
                                             ${
                                               isAdmin
-                                                ? `<button data-del-res="${esc(mod.id)}|${esc(r.id)}" class="text-rose-600 hover:text-rose-800 text-xs font-bold">✕</button>`
+                                                ? `<div class="flex flex-col gap-1 shrink-0">
+                                                    <button data-edit-res="${esc(mod.id)}|${esc(r.id)}" title="Editar material" class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold cursor-pointer">Editar</button>
+                                                    <button data-del-res="${esc(mod.id)}|${esc(r.id)}" title="Eliminar material" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[11px] font-bold cursor-pointer">✕</button>
+                                                  </div>`
                                                 : ''
                                             }
                                           </div>`
@@ -1914,31 +2263,36 @@ ${text}
                               }
                             </div>
 
-                            <!-- Actividades -->
+                            <!-- Actividades en Hipertexto -->
                             <div>
                               <h5 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Actividades de la Secuencia</h5>
                               ${
                                 (mod.assignments || []).length === 0
                                   ? `<p class="text-xs text-slate-400 italic">Sin actividades en esta secuencia.</p>`
-                                  : `<div class="space-y-2">
+                                  : `<div class="space-y-2.5">
                                       ${(mod.assignments || [])
                                         .map(a => {
                                           const mySub = !isAdmin ? getSubmission(course.id, a.id, userId) : null;
-                                          return `<div class="p-3.5 rounded-xl bg-amber-50/50 border border-amber-200 flex flex-wrap items-center justify-between gap-3">
-                                            <div>
-                                              <p class="font-bold text-xs text-slate-900">📝 ${esc(a.title)}</p>
-                                              <p class="text-xs text-slate-600 mt-0.5">${esc(a.instructions)}</p>
-                                              <p class="text-[11px] text-slate-500 mt-1">Vence: <strong>${esc(a.dueDate || 'Sin fecha')}</strong> · Valor: ${Number(a.maxPoints || 100)} pts</p>
+                                          return `<div class="p-4 rounded-xl bg-amber-50/50 border border-amber-200 space-y-3">
+                                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                              <div>
+                                                <p class="font-bold text-xs sm:text-sm text-slate-900">📝 ${esc(a.title)}</p>
+                                                <p class="text-[11px] text-slate-500 mt-0.5">Vence: <strong>${esc(a.dueDate || 'Sin fecha')}</strong> · Valor: <strong>${Number(a.maxPoints || 100)} pts</strong></p>
+                                              </div>
+                                              <div class="flex flex-wrap items-center gap-2">
+                                                ${
+                                                  isAdmin
+                                                    ? `<button data-edit-ass="${esc(mod.id)}|${esc(a.id)}" class="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer">Editar</button>
+                                                       <button data-grade-ass="${esc(a.id)}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold cursor-pointer">Revisar Entregas</button>
+                                                       <button data-del-ass="${esc(mod.id)}|${esc(a.id)}" class="px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-bold cursor-pointer">✕</button>`
+                                                    : `<button data-submit-ass="${esc(a.id)}" class="px-3.5 py-1.5 rounded-lg ${mySub ? 'bg-emerald-600' : 'bg-indigo-600'} text-white text-xs font-bold shadow-xs cursor-pointer">
+                                                        ${mySub ? (mySub.grade !== null && mySub.grade !== undefined ? `Calificado: ${mySub.grade}/${a.maxPoints}` : 'Entregado (Editar)') : 'Entregar Actividad'}
+                                                       </button>`
+                                                }
+                                              </div>
                                             </div>
-                                            <div class="flex items-center gap-2">
-                                              ${
-                                                isAdmin
-                                                  ? `<button data-grade-ass="${esc(a.id)}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold">Revisar Entregas</button>
-                                                     <button data-del-ass="${esc(mod.id)}|${esc(a.id)}" class="px-2 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-bold">✕</button>`
-                                                  : `<button data-submit-ass="${esc(a.id)}" class="px-3 py-1.5 rounded-lg ${mySub ? 'bg-emerald-600' : 'bg-indigo-600'} text-white text-xs font-bold">
-                                                      ${mySub ? (mySub.grade !== null && mySub.grade !== undefined ? `Calificado: ${mySub.grade}/${a.maxPoints}` : 'Entregado (Editar)') : 'Entregar Actividad'}
-                                                     </button>`
-                                              }
+                                            <div class="bg-white p-3.5 rounded-xl border border-amber-200/80">
+                                              ${renderHypertextBlock(a.instructions)}
                                             </div>
                                           </div>`;
                                         })
@@ -1964,8 +2318,8 @@ ${text}
                 <input id="inp-mod-title" type="text" required placeholder="Ej. Secuencia 2: Leyes de Newton" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
               </div>
               <div class="flex justify-end gap-2 pt-2">
-                <button type="button" id="btn-cancel-mod" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold">Cancelar</button>
-                <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Crear Secuencia</button>
+                <button type="button" id="btn-cancel-mod" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold cursor-pointer">Cancelar</button>
+                <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer">Crear Secuencia</button>
               </div>
             </form>`,
             () => {
@@ -2007,121 +2361,400 @@ ${text}
         });
 
         tabPanel.querySelectorAll('[data-del-mod]').forEach(btn => {
-          btn.addEventListener('click', async () => {
+          btn.addEventListener('click', () => {
             const modId = btn.getAttribute('data-del-mod');
-            if (!confirm('¿Eliminar esta secuencia y su contenido?')) return;
-            const liveCourse = getCourseById(course.id);
-            if (!liveCourse) return;
-            const now = Date.now() + 2000;
-            appState.db.meta.deletedModules[modId] = now;
-            liveCourse.modules = (liveCourse.modules || []).filter(m => m.id !== modId);
-            liveCourse.updatedAt = now;
-            renderCourseDetail();
-            await saveState(true);
-            showToast('Secuencia eliminada', 'info');
+            openConfirmModal('Eliminar Secuencia', '¿Deseas eliminar esta secuencia y su contenido?', async () => {
+              const liveCourse = getCourseById(course.id);
+              if (!liveCourse) return;
+              const now = Date.now() + 2000;
+              appState.db.meta.deletedModules[modId] = now;
+              liveCourse.modules = (liveCourse.modules || []).filter(m => m.id !== modId);
+              liveCourse.updatedAt = now;
+              renderCourseDetail();
+              await saveState(true);
+              showToast('Secuencia eliminada', 'info');
+            });
           });
         });
 
-        tabPanel.querySelectorAll('[data-add-res]').forEach(btn => {
+        tabPanel.querySelectorAll('[data-del-res]').forEach(btn => {
           btn.addEventListener('click', () => {
-            const modId = btn.getAttribute('data-add-res');
-            openModal(
-              'Agregar Material a la Secuencia',
-              `<form id="form-add-res" class="space-y-3">
+            const [modId, resId] = btn.getAttribute('data-del-res').split('|');
+            openConfirmModal('Eliminar Material', '¿Deseas eliminar este material de la secuencia?', async () => {
+              const liveCourse = getCourseById(course.id);
+              const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+              if (!liveMod) return;
+              const now = Date.now() + 2000;
+              appState.db.meta.deletedResources[resId] = now;
+              liveMod.resources = (liveMod.resources || []).filter(r => r.id !== resId);
+              liveMod.updatedAt = now;
+              liveCourse.updatedAt = now;
+              renderCourseDetail();
+              await saveState(true);
+              showToast('Material eliminado', 'info');
+            });
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-del-ass]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const [modId, assId] = btn.getAttribute('data-del-ass').split('|');
+            openConfirmModal('Eliminar Actividad', '¿Deseas eliminar esta actividad de la secuencia?', async () => {
+              const liveCourse = getCourseById(course.id);
+              const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+              if (!liveMod) return;
+              const now = Date.now() + 2000;
+              appState.db.meta.deletedAssignments[assId] = now;
+              liveMod.assignments = (liveMod.assignments || []).filter(a => a.id !== assId);
+              liveMod.updatedAt = now;
+              liveCourse.updatedAt = now;
+              renderCourseDetail();
+              await saveState(true);
+              showToast('Actividad eliminada', 'info');
+            });
+          });
+        });
+
+        function openResourceHypertextModal(modId, existingRes = null) {
+          const liveCourse = getCourseById(course.id);
+          const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+          if (!liveMod) return;
+
+          openModal(
+            existingRes ? 'Editar Material en Hipertexto' : 'Agregar Material con IA Gemini (Hipertexto)',
+            `<form id="form-add-res" class="space-y-3.5">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label class="block text-xs font-bold text-slate-700 mb-1">Tipo</label>
                   <select id="res-type" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs">
-                    <option>Lectura</option><option>Video</option><option>Presentación</option><option>Práctica</option><option>Formulario</option>
+                    ${['Lectura', 'Guía Interactiva', 'Video', 'Presentación', 'Práctica', 'Formulario']
+                      .map(t => `<option ${existingRes?.type === t ? 'selected' : ''}>${t}</option>`)
+                      .join('')}
                   </select>
                 </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Título</label>
-                  <input id="res-title" type="text" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Título del Material</label>
+                  <input id="res-title" type="text" required value="${esc(existingRes?.title || '')}" placeholder="Ej. Leyes de Newton y Diagramas de Cuerpo Libre" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
                 </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Descripción o enlace</label>
-                  <textarea id="res-detail" rows="3" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></textarea>
+              </div>
+
+              <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-xs font-extrabold text-indigo-950">✨ Generador de Hipertexto con Gemini IA</span>
+                  <button type="button" id="btn-ai-gen-res" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer">
+                    ✨ Generar contenido en hipertexto con Gemini IA
+                  </button>
                 </div>
-                <div class="flex justify-end gap-2">
-                  <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Guardar Material</button>
+                <input id="res-ai-prompt" type="text" placeholder="Opcional: describe qué subtemas, fórmulas o enlaces deseas incluir..." class="w-full px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs" />
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-bold text-slate-700">Contenido en Hipertexto (HTML enriquecido)</label>
+                  <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px]">
+                    <button type="button" id="tab-res-preview" class="px-2.5 py-1 rounded-md bg-white shadow-2xs font-bold text-slate-900 cursor-pointer">👁 Vista Previa</button>
+                    <button type="button" id="tab-res-code" class="px-2.5 py-1 rounded-md font-semibold text-slate-600 cursor-pointer">Código HTML</button>
+                  </div>
                 </div>
-              </form>`,
-              () => {
-                document.getElementById('form-add-res').addEventListener('submit', async e => {
-                  e.preventDefault();
-                  const liveCourse = getCourseById(course.id);
-                  const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
-                  if (!liveMod) return;
-                  const now = Date.now();
-                  liveMod.resources.push({
+                <div id="res-preview-box" class="min-h-[160px] max-h-64 overflow-y-auto p-3.5 rounded-xl border border-slate-300 bg-white">
+                  ${renderHypertextBlock(existingRes?.detail || '<p class="text-slate-400 italic">Aquí aparecerá la vista previa del hipertexto generado por Gemini IA o escrito por ti...</p>')}
+                </div>
+                <textarea id="res-detail" rows="7" required placeholder="<p>Escribe texto o genera hipertexto con Gemini IA...</p>" class="hidden w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono">${esc(existingRes?.detail || '')}</textarea>
+              </div>
+
+              <details class="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                <summary class="text-[11px] font-bold text-slate-600 cursor-pointer">Configurar API Key de Gemini (opcional)</summary>
+                <div class="mt-2 flex gap-2">
+                  <input id="res-gemini-key" type="password" value="${esc(getGeminiApiKey())}" placeholder="AIzaSy... (Opcional)" class="flex-1 px-2.5 py-1 rounded-lg border text-xs" />
+                  <button type="button" id="btn-save-res-gemini" class="px-3 py-1 rounded-lg bg-slate-800 text-white text-xs font-semibold cursor-pointer">Guardar Key</button>
+                </div>
+              </details>
+
+              <div class="flex justify-end gap-2 pt-2 border-t">
+                <button type="button" id="btn-cancel-res" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold cursor-pointer">Cancelar</button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer">Guardar Material en Secuencia</button>
+              </div>
+            </form>`,
+            () => {
+              const detailEl = document.getElementById('res-detail');
+              const previewBox = document.getElementById('res-preview-box');
+              const tabPreview = document.getElementById('tab-res-preview');
+              const tabCode = document.getElementById('tab-res-code');
+
+              const updatePreview = () => {
+                previewBox.innerHTML = renderHypertextBlock(
+                  detailEl.value.trim() || '<p class="text-slate-400 italic">Sin contenido aún...</p>'
+                );
+              };
+
+              tabPreview.addEventListener('click', () => {
+                updatePreview();
+                previewBox.classList.remove('hidden');
+                detailEl.classList.add('hidden');
+                tabPreview.className = 'px-2.5 py-1 rounded-md bg-white shadow-2xs font-bold text-slate-900 cursor-pointer';
+                tabCode.className = 'px-2.5 py-1 rounded-md font-semibold text-slate-600 cursor-pointer';
+              });
+
+              tabCode.addEventListener('click', () => {
+                detailEl.classList.remove('hidden');
+                previewBox.classList.add('hidden');
+                tabCode.className = 'px-2.5 py-1 rounded-md bg-white shadow-2xs font-bold text-slate-900 cursor-pointer';
+                tabPreview.className = 'px-2.5 py-1 rounded-md font-semibold text-slate-600 cursor-pointer';
+              });
+
+              detailEl.addEventListener('input', updatePreview);
+              document.getElementById('btn-cancel-res').addEventListener('click', closeModal);
+              document.getElementById('btn-save-res-gemini').addEventListener('click', () => {
+                saveGeminiApiKey(document.getElementById('res-gemini-key').value);
+                showToast('Clave Gemini guardada', 'success');
+              });
+
+              document.getElementById('btn-ai-gen-res').addEventListener('click', async () => {
+                const btnAi = document.getElementById('btn-ai-gen-res');
+                const titleVal = document.getElementById('res-title').value.trim();
+                const typeVal = document.getElementById('res-type').value;
+                const extraVal = document.getElementById('res-ai-prompt').value.trim();
+
+                if (!titleVal && !extraVal) {
+                  showToast('Escribe primero el título del material o el tema a generar', 'error');
+                  return;
+                }
+                btnAi.disabled = true;
+                btnAi.textContent = '⏳ Generando hipertexto con Gemini IA...';
+                try {
+                  const html = await generateHypertextMaterialWithAI({
+                    courseTitle: liveCourse.title,
+                    sequenceTitle: liveMod.title,
+                    resourceType: typeVal,
+                    resourceTitle: titleVal || extraVal,
+                    extraPrompt: extraVal
+                  });
+                  detailEl.value = html;
+                  updatePreview();
+                  showToast('Contenido en hipertexto generado con éxito', 'success');
+                } finally {
+                  btnAi.disabled = false;
+                  btnAi.textContent = '✨ Generar contenido en hipertexto con Gemini IA';
+                }
+              });
+
+              document.getElementById('form-add-res').addEventListener('submit', async e => {
+                e.preventDefault();
+                const currentCourse = getCourseById(course.id);
+                const currentMod = (currentCourse?.modules || []).find(m => m.id === modId);
+                if (!currentMod) return;
+                const now = Date.now();
+                const cleanHtml = sanitizeHypertextHtml(detailEl.value.trim());
+
+                if (existingRes) {
+                  const targetRes = (currentMod.resources || []).find(r => r.id === existingRes.id);
+                  if (targetRes) {
+                    targetRes.type = document.getElementById('res-type').value;
+                    targetRes.title = document.getElementById('res-title').value.trim();
+                    targetRes.detail = cleanHtml;
+                    targetRes.updatedAt = now;
+                  }
+                } else {
+                  currentMod.resources.push({
                     id: uid('res'),
                     type: document.getElementById('res-type').value,
                     title: document.getElementById('res-title').value.trim(),
-                    detail: document.getElementById('res-detail').value.trim(),
+                    detail: cleanHtml,
                     updatedAt: now
                   });
-                  liveMod.updatedAt = now;
-                  liveCourse.updatedAt = now;
-                  closeModal();
-                  renderCourseDetail();
-                  await saveState(true);
-                });
-              }
-            );
+                }
+                currentMod.updatedAt = now;
+                currentCourse.updatedAt = now;
+                closeModal();
+                renderCourseDetail();
+                await saveState(true);
+                showToast('Material en hipertexto guardado y sincronizado', 'success');
+              });
+            },
+            'max-w-2xl'
+          );
+        }
+
+        tabPanel.querySelectorAll('[data-add-res]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            openResourceHypertextModal(btn.getAttribute('data-add-res'), null);
           });
         });
 
-        tabPanel.querySelectorAll('[data-add-ass]').forEach(btn => {
+        tabPanel.querySelectorAll('[data-edit-res]').forEach(btn => {
           btn.addEventListener('click', () => {
-            const modId = btn.getAttribute('data-add-ass');
-            openModal(
-              'Nueva Actividad en la Secuencia',
-              `<form id="form-add-ass" class="space-y-3">
+            const [modId, resId] = btn.getAttribute('data-edit-res').split('|');
+            const liveCourse = getCourseById(course.id);
+            const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+            const existingRes = (liveMod?.resources || []).find(r => r.id === resId);
+            if (existingRes) openResourceHypertextModal(modId, existingRes);
+          });
+        });
+
+        function openAssignmentHypertextModal(modId, existingAss = null) {
+          const liveCourse = getCourseById(course.id);
+          const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+          if (!liveMod) return;
+
+          openModal(
+            existingAss ? 'Editar Actividad en Hipertexto' : 'Nueva Actividad con IA Gemini (Hipertexto)',
+            `<form id="form-add-ass" class="space-y-3.5">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Título de la Actividad</label>
+                <input id="ass-title" type="text" required value="${esc(existingAss?.title || '')}" placeholder="Ej. Práctica de Laboratorio: Cálculo de Momento de Torsión" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+              </div>
+
+              <div class="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Título de la Actividad</label>
-                  <input id="ass-title" type="text" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Fecha límite</label>
+                  <input id="ass-due" type="date" value="${esc(existingAss?.dueDate || getTodayFormatted())}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
                 </div>
                 <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Instrucciones</label>
-                  <textarea id="ass-inst" rows="3" required class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></textarea>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Puntos máximos</label>
+                  <input id="ass-pts" type="number" min="1" max="100" value="${Number(existingAss?.maxPoints || 100)}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
                 </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Fecha límite</label>
-                    <input id="ass-due" type="date" value="${esc(getTodayFormatted())}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+              </div>
+
+              <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-xs font-extrabold text-amber-950">✨ Asistente Pedagógico Gemini IA</span>
+                  <button type="button" id="btn-ai-gen-ass" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer">
+                    ✨ Redactar instrucciones y rúbrica en hipertexto con Gemini IA
+                  </button>
+                </div>
+                <input id="ass-ai-prompt" type="text" placeholder="Opcional: describe qué producto entregarán, formato o criterios..." class="w-full px-3 py-1.5 rounded-lg border border-amber-200 bg-white text-xs" />
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-bold text-slate-700">Instrucciones y Rúbrica en Hipertexto</label>
+                  <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px]">
+                    <button type="button" id="tab-ass-preview" class="px-2.5 py-1 rounded-md bg-white shadow-2xs font-bold text-slate-900 cursor-pointer">👁 Vista Previa</button>
+                    <button type="button" id="tab-ass-code" class="px-2.5 py-1 rounded-md font-semibold text-slate-600 cursor-pointer">Código HTML</button>
                   </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Puntos máx.</label>
-                    <input id="ass-pts" type="number" value="100" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
-                  </div>
                 </div>
-                <div class="flex justify-end">
-                  <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Crear Actividad</button>
+                <div id="ass-preview-box" class="min-h-[170px] max-h-64 overflow-y-auto p-3.5 rounded-xl border border-slate-300 bg-white">
+                  ${renderHypertextBlock(existingAss?.instructions || '<p class="text-slate-400 italic">Aquí aparecerá la vista previa de las instrucciones y rúbrica en hipertexto...</p>')}
                 </div>
-              </form>`,
-              () => {
-                document.getElementById('form-add-ass').addEventListener('submit', async e => {
-                  e.preventDefault();
-                  const liveCourse = getCourseById(course.id);
-                  const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
-                  if (!liveMod) return;
-                  const now = Date.now();
-                  liveMod.assignments.push({
+                <textarea id="ass-inst" rows="7" required placeholder="<p>Redacta las consignas o usa Gemini IA...</p>" class="hidden w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono">${esc(existingAss?.instructions || '')}</textarea>
+              </div>
+
+              <div class="flex justify-end gap-2 pt-2 border-t">
+                <button type="button" id="btn-cancel-ass" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold cursor-pointer">Cancelar</button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer">Guardar Actividad en Secuencia</button>
+              </div>
+            </form>`,
+            () => {
+              const instEl = document.getElementById('ass-inst');
+              const previewBox = document.getElementById('ass-preview-box');
+              const tabPreview = document.getElementById('tab-ass-preview');
+              const tabCode = document.getElementById('tab-ass-code');
+
+              const updatePreview = () => {
+                previewBox.innerHTML = renderHypertextBlock(
+                  instEl.value.trim() || '<p class="text-slate-400 italic">Sin instrucciones aún...</p>'
+                );
+              };
+
+              tabPreview.addEventListener('click', () => {
+                updatePreview();
+                previewBox.classList.remove('hidden');
+                instEl.classList.add('hidden');
+                tabPreview.className = 'px-2.5 py-1 rounded-md bg-white shadow-2xs font-bold text-slate-900 cursor-pointer';
+                tabCode.className = 'px-2.5 py-1 rounded-md font-semibold text-slate-600 cursor-pointer';
+              });
+
+              tabCode.addEventListener('click', () => {
+                instEl.classList.remove('hidden');
+                previewBox.classList.add('hidden');
+                tabCode.className = 'px-2.5 py-1 rounded-md bg-white shadow-2xs font-bold text-slate-900 cursor-pointer';
+                tabPreview.className = 'px-2.5 py-1 rounded-md font-semibold text-slate-600 cursor-pointer';
+              });
+
+              instEl.addEventListener('input', updatePreview);
+              document.getElementById('btn-cancel-ass').addEventListener('click', closeModal);
+
+              document.getElementById('btn-ai-gen-ass').addEventListener('click', async () => {
+                const btnAi = document.getElementById('btn-ai-gen-ass');
+                const titleVal = document.getElementById('ass-title').value.trim();
+                const ptsVal = Number(document.getElementById('ass-pts').value || 100);
+                const extraVal = document.getElementById('ass-ai-prompt').value.trim();
+
+                if (!titleVal && !extraVal) {
+                  showToast('Escribe el título de la actividad o una breve descripción primero', 'error');
+                  return;
+                }
+                btnAi.disabled = true;
+                btnAi.textContent = '⏳ Redactando consigna y rúbrica con Gemini IA...';
+                try {
+                  const html = await generateHypertextAssignmentWithAI({
+                    courseTitle: liveCourse.title,
+                    sequenceTitle: liveMod.title,
+                    assignTitle: titleVal || extraVal,
+                    maxPoints: ptsVal,
+                    extraPrompt: extraVal
+                  });
+                  instEl.value = html;
+                  updatePreview();
+                  showToast('Instrucciones y rúbrica en hipertexto generadas', 'success');
+                } finally {
+                  btnAi.disabled = false;
+                  btnAi.textContent = '✨ Redactar instrucciones y rúbrica en hipertexto con Gemini IA';
+                }
+              });
+
+              document.getElementById('form-add-ass').addEventListener('submit', async e => {
+                e.preventDefault();
+                const currentCourse = getCourseById(course.id);
+                const currentMod = (currentCourse?.modules || []).find(m => m.id === modId);
+                if (!currentMod) return;
+                const now = Date.now();
+                const cleanHtml = sanitizeHypertextHtml(instEl.value.trim());
+
+                if (existingAss) {
+                  const targetAss = (currentMod.assignments || []).find(a => a.id === existingAss.id);
+                  if (targetAss) {
+                    targetAss.title = document.getElementById('ass-title').value.trim();
+                    targetAss.instructions = cleanHtml;
+                    targetAss.dueDate = document.getElementById('ass-due').value;
+                    targetAss.maxPoints = Number(document.getElementById('ass-pts').value || 100);
+                    targetAss.updatedAt = now;
+                  }
+                } else {
+                  currentMod.assignments.push({
                     id: uid('ass'),
                     title: document.getElementById('ass-title').value.trim(),
-                    instructions: document.getElementById('ass-inst').value.trim(),
+                    instructions: cleanHtml,
                     dueDate: document.getElementById('ass-due').value,
                     maxPoints: Number(document.getElementById('ass-pts').value || 100),
                     updatedAt: now
                   });
-                  liveMod.updatedAt = now;
-                  liveCourse.updatedAt = now;
-                  closeModal();
-                  renderCourseDetail();
-                  await saveState(true);
-                });
-              }
-            );
+                }
+                currentMod.updatedAt = now;
+                currentCourse.updatedAt = now;
+                closeModal();
+                renderCourseDetail();
+                await saveState(true);
+                showToast('Actividad en hipertexto publicada y sincronizada', 'success');
+              });
+            },
+            'max-w-2xl'
+          );
+        }
+
+        tabPanel.querySelectorAll('[data-add-ass]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            openAssignmentHypertextModal(btn.getAttribute('data-add-ass'), null);
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-edit-ass]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const [modId, assId] = btn.getAttribute('data-edit-ass').split('|');
+            const liveCourse = getCourseById(course.id);
+            const liveMod = (liveCourse?.modules || []).find(m => m.id === modId);
+            const existingAss = (liveMod?.assignments || []).find(a => a.id === assId);
+            if (existingAss) openAssignmentHypertextModal(modId, existingAss);
           });
         });
 
@@ -2137,7 +2770,7 @@ ${text}
                   <textarea id="sub-content" rows="4" required placeholder="Pega el enlace a Google Drive/Canva o escribe tu desarrollo..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs">${esc(prevSub?.content || '')}</textarea>
                 </div>
                 <div class="flex justify-end">
-                  <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold">Enviar Entrega</button>
+                  <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold cursor-pointer">Enviar Entrega</button>
                 </div>
               </form>`,
               () => {
@@ -2192,7 +2825,7 @@ ${text}
                             <p class="text-xs text-slate-700 bg-white p-2 rounded-lg border">${esc(s.content)}</p>
                             <div class="flex items-center gap-2">
                               <input type="number" min="0" max="100" data-grade-inp="${esc(s.id)}" value="${s.grade ?? ''}" placeholder="Calificación (0-100)" class="px-2.5 py-1 rounded-lg border text-xs w-36" />
-                              <button data-save-grade="${esc(s.id)}" class="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">Guardar</button>
+                              <button data-save-grade="${esc(s.id)}" class="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold cursor-pointer">Guardar</button>
                             </div>
                           </div>`
                         )
@@ -2247,7 +2880,7 @@ ${text}
                 <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
                   <p class="font-bold text-emerald-950">Asistencia en Materia (${ev.attendanceWeight}%)</p>
                   <p class="text-xl font-extrabold text-emerald-700 mt-1">${ev.attendanceWeighted.toFixed(1)} pts</p>
-                  <p class="text-[11px] text-emerald-700 mt-0.5">${ev.studentAttendanceCount} de ${ev.effectiveTotalDays} sesiones</p>
+                  <p class="text-[11px] text-emerald-700 mt-0.5">${ev.studentAttendanceCount} de ${ev.effectiveTotalDays} días efectivos</p>
                 </div>
                 <div class="p-4 rounded-xl bg-amber-50 border border-amber-200">
                   <p class="font-bold text-amber-950">Productos Evaluables (${ev.productsWeightSum}%)</p>
@@ -2265,7 +2898,7 @@ ${text}
                     <h3 class="font-bold text-sm text-slate-900">Configuración de Ponderación y Productos Independientes</h3>
                     <p class="text-xs text-slate-500">Suma total actual: <strong class="${totalConfigured === 100 ? 'text-emerald-600' : 'text-rose-600'}">${totalConfigured}% de 100%</strong></p>
                   </div>
-                  <button id="btn-add-product" class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">+ Nuevo Producto Evaluable</button>
+                  <button id="btn-add-product" class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer">+ Nuevo Producto Evaluable</button>
                 </div>
 
                 <div class="grid sm:grid-cols-3 gap-3 text-xs">
@@ -2278,7 +2911,7 @@ ${text}
                     <input id="inp-w-attendance" type="number" min="0" max="100" value="${cfg.attendanceWeight}" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
                   </div>
                   <div class="flex items-end">
-                    <button id="btn-save-weights" class="w-full py-2 rounded-xl bg-slate-900 text-white font-bold">Guardar Ponderación Base</button>
+                    <button id="btn-save-weights" class="w-full py-2 rounded-xl bg-slate-900 text-white font-bold cursor-pointer">Guardar Ponderación Base</button>
                   </div>
                 </div>
 
@@ -2288,7 +2921,7 @@ ${text}
                     .map(
                       p => `<div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border text-xs">
                         <span><strong>${esc(p.title)}</strong> (${Number(p.weight)}%) — <span class="text-slate-500">${esc(p.description)}</span></span>
-                        <button data-del-prod="${esc(p.id)}" class="text-rose-600 font-bold px-2">Eliminar</button>
+                        <button data-del-prod="${esc(p.id)}" class="text-rose-600 font-bold px-2 cursor-pointer">Eliminar</button>
                       </div>`
                     )
                     .join('')}
@@ -2358,7 +2991,7 @@ ${text}
                   <label class="block text-xs font-bold mb-1">Descripción</label>
                   <input id="prod-desc" type="text" class="w-full px-3 py-2 rounded-xl border text-xs" />
                 </div>
-                <button type="submit" class="w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Agregar Producto</button>
+                <button type="submit" class="w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer">Agregar Producto</button>
               </form>`,
               () => {
                 document.getElementById('form-new-prod').addEventListener('submit', async e => {
@@ -2436,7 +3069,7 @@ ${text}
                                         ${esc(r.date)} (${esc(r.time || '')})
                                         ${
                                           isAdmin
-                                            ? `<button data-del-book-att="${esc(r.courseId)}|${esc(r.date)}|${esc(r.studentId)}" class="text-rose-600 font-bold ml-1 hover:underline">Eliminar</button>`
+                                            ? `<button data-del-book-att="${esc(r.courseId)}|${esc(r.date)}|${esc(r.studentId)}" class="text-rose-600 font-bold ml-1 hover:underline cursor-pointer">Eliminar</button>`
                                             : ''
                                         }
                                       </span>`
@@ -2490,14 +3123,14 @@ ${text}
               </span>
             </div>
             <div class="flex items-center gap-2">
-              <button id="nav-courses" class="px-3 py-1.5 rounded-xl text-xs font-bold ${appState.activeView === 'courses' || appState.activeView === 'dashboard' ? 'bg-white text-slate-900' : 'bg-slate-800 text-slate-200'}">Materias</button>
+              <button id="nav-courses" class="px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${appState.activeView === 'courses' || appState.activeView === 'dashboard' ? 'bg-white text-slate-900' : 'bg-slate-800 text-slate-200'}">Materias</button>
               ${
                 !isAdmin
-                  ? `<button id="nav-scan-qr" class="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-extrabold">📷 Escanear QR</button>`
+                  ? `<button id="nav-scan-qr" class="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-extrabold cursor-pointer">📷 Escanear QR</button>`
                   : ''
               }
               <span class="text-xs text-slate-300 hidden sm:inline ml-2">${esc(appState.session.user.name)}</span>
-              <button id="btn-logout" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold">Salir</button>
+              <button id="btn-logout" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer">Salir</button>
             </div>
           </header>
 
@@ -2541,10 +3174,10 @@ ${text}
                 ? `<div class="flex items-center gap-2">
                     ${
                       deletedCount > 0
-                        ? `<button id="btn-restore-deleted-courses" class="px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50">Papelera en Nube (${deletedCount})</button>`
+                        ? `<button id="btn-restore-deleted-courses" class="px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer">Papelera en Nube (${deletedCount})</button>`
                         : ''
                     }
-                    <button id="btn-new-course" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs">+ Nueva Materia</button>
+                    <button id="btn-new-course" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer">+ Nueva Materia</button>
                   </div>`
                 : ''
             }
@@ -2574,10 +3207,10 @@ ${text}
                           </div>
                         </div>
                         <div class="p-4 pt-0 flex items-center gap-2">
-                          <button data-open-course="${esc(c.id)}" class="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold">Entrar a la Materia</button>
+                          <button data-open-course="${esc(c.id)}" class="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer">Entrar a la Materia</button>
                           ${
                             isAdmin
-                              ? `<button data-quick-del-course="${esc(c.id)}" title="Eliminar materia" class="px-3 py-2.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold">🗑</button>`
+                              ? `<button data-quick-del-course="${esc(c.id)}" title="Eliminar materia" class="px-3 py-2.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold cursor-pointer">🗑</button>`
                               : ''
                           }
                         </div>
@@ -2599,18 +3232,23 @@ ${text}
       });
 
       container.querySelectorAll('[data-quick-del-course]').forEach(btn => {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
           const cid = btn.getAttribute('data-quick-del-course');
           const target = getCourseById(cid);
           if (!target) return;
-          if (!confirm(`¿Eliminar permanentemente la materia "${target.title}" en todos los dispositivos?`)) return;
-          const now = Date.now() + 5000;
-          appState.db.meta.deletedCourses[cid] = now;
-          savePersistedDeletedCourses(appState.db.meta.deletedCourses);
-          appState.db.courses = (appState.db.courses || []).filter(c => c.id !== cid);
-          renderMain();
-          await saveState(true);
-          showToast('Materia eliminada y sincronizada en la nube', 'info');
+          openConfirmModal(
+            'Eliminar Materia',
+            `¿Deseas eliminar permanentemente la materia "${target.title}" en todos los dispositivos?`,
+            async () => {
+              const now = Date.now() + 5000;
+              appState.db.meta.deletedCourses[cid] = now;
+              savePersistedDeletedCourses(appState.db.meta.deletedCourses);
+              appState.db.courses = (appState.db.courses || []).filter(c => c.id !== cid);
+              renderMain();
+              await saveState(true);
+              showToast('Materia eliminada y sincronizada en la nube', 'info');
+            }
+          );
         });
       });
 
@@ -2629,7 +3267,7 @@ ${text}
                     const seedMatch = SEED_COURSES.find(s => s.id === k);
                     return `<div class="p-3 flex items-center justify-between text-xs">
                       <span class="font-bold">${esc(seedMatch ? seedMatch.title : k)}</span>
-                      <button data-restore-cid="${esc(k)}" class="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold">Restaurar</button>
+                      <button data-restore-cid="${esc(k)}" class="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer">Restaurar</button>
                     </div>`;
                   })
                   .join('')}
@@ -2680,7 +3318,7 @@ ${text}
                 <label class="block text-xs font-bold mb-1">Descripción</label>
                 <textarea id="nc-desc" rows="2" required class="w-full px-3 py-2 rounded-xl border text-xs"></textarea>
               </div>
-              <button type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold">Crear y Sincronizar Materia</button>
+              <button type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer">Crear y Sincronizar Materia</button>
             </form>`,
             () => {
               document.getElementById('form-new-course').addEventListener('submit', async e => {
@@ -2728,7 +3366,7 @@ ${text}
       }
     }
 
-    // Arranque inicial y ciclo continuo de sincronización cada 2.5s
+    // Arranque inicial y ciclo continuo de sincronización cada 2.5 segundos
     renderMain();
     syncNow({ push: false, silent: true, forceRender: true });
 
