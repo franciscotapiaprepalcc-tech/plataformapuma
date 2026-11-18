@@ -582,6 +582,88 @@
         lastLocalMutationTs: 0
       };
 
+      // ==================== CONFIGURACIÓN DE NUBE Y TIMEOUTS DE RED ====================
+      let activeGistIdMemory = DEFAULT_PUBLIC_GIST_ID;
+      let syncLockPromise = Promise.resolve({ ok: true, changed: false });
+
+      async function fetchWithTimeout(url, options = {}, timeoutMs = 3500) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      function getCloudConfig() {
+        let cfg = { token: DEFAULT_GITHUB_TOKEN, gistId: DEFAULT_PUBLIC_GIST_ID };
+        try {
+          const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.token) cfg.token = String(parsed.token).trim();
+            if (parsed && parsed.gistId) cfg.gistId = String(parsed.gistId).trim();
+          }
+        } catch (e) {}
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlGist = urlParams.get('gist');
+          if (urlGist) cfg.gistId = urlGist.trim();
+        } catch (e) {}
+        return cfg;
+      }
+
+      function saveCloudConfig(token, gistId) {
+        try {
+          localStorage.setItem(
+            CLOUD_CONFIG_KEY,
+            JSON.stringify({
+              token: String(token || '').trim(),
+              gistId: String(gistId || '').trim()
+            })
+          );
+        } catch (e) {}
+      }
+
+      function buildGitHubHeaders(token, hasBody = false) {
+        const headers = { Accept: 'application/vnd.github+json' };
+        const clean = String(token || '').trim();
+        if (clean) {
+          headers['Authorization'] = `token ${clean}`;
+        }
+        if (hasBody) {
+          headers['Content-Type'] = 'application/json';
+        }
+        return headers;
+      }
+
+      function getKvdbMasterKey() {
+        const cfg = getCloudConfig();
+        const cleanGist = String(cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_default').replace(/[^a-zA-Z0-9_-]/g, '');
+        return `puma_steam_master_v2_${cleanGist}`;
+      }
+
+      function mergeTimestampMaps(mapA, mapB) {
+        const out = {};
+        const a = mapA && typeof mapA === 'object' ? mapA : {};
+        const b = mapB && typeof mapB === 'object' ? mapB : {};
+        Object.keys(a).forEach(k => {
+          out[k] = Number(a[k] || 0);
+        });
+        Object.keys(b).forEach(k => {
+          const ts = Number(b[k] || 0);
+          if (!out[k] || ts > out[k]) {
+            out[k] = ts;
+          }
+        });
+        return out;
+      }
+
+      function getSubmissionKey(sub) {
+        return `${String(sub?.courseId || '').trim()}|${String(sub?.assignmentId || '').trim()}|${String(sub?.studentId || '').trim()}`;
+      }
+
       // ==================== MOTOR UNIFICADO DE SINCRONIZACIÓN EN TIEMPO REAL ====================
       function mergeOrderedCollectionById(remoteList, localList, deletedMap, preferLocalOrder = true) {
         const rArr = Array.isArray(remoteList) ? remoteList : [];
@@ -861,10 +943,14 @@
       async function fetchKvdbDatabase() {
         try {
           const key = getKvdbMasterKey();
-          const res = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(key)}?_t=${Date.now()}`, {
-            headers: { Accept: 'application/json' },
-            cache: 'no-store'
-          });
+          const res = await fetchWithTimeout(
+            `${REALTIME_ATT_API}/${encodeURIComponent(key)}?_t=${Date.now()}`,
+            {
+              headers: { Accept: 'application/json' },
+              cache: 'no-store'
+            },
+            3500
+          );
           if (res.status === 404) return null;
           if (!res.ok) return null;
           const parsed = await res.json();
@@ -878,11 +964,15 @@
       async function pushKvdbDatabase(dbObj) {
         try {
           const key = getKvdbMasterKey();
-          const res = await fetch(`${REALTIME_ATT_API}/${encodeURIComponent(key)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dbObj)
-          });
+          const res = await fetchWithTimeout(
+            `${REALTIME_ATT_API}/${encodeURIComponent(key)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(dbObj)
+            },
+            3500
+          );
           return res.ok;
         } catch (e) {
           return false;
@@ -899,9 +989,11 @@
         }
         if (!cfg.token) return '';
         try {
-          const res = await fetch(`https://api.github.com/gists?per_page=50&_t=${Date.now()}`, {
-            headers: buildGitHubHeaders(cfg.token, false)
-          });
+          const res = await fetchWithTimeout(
+            `https://api.github.com/gists?per_page=50&_t=${Date.now()}`,
+            { headers: buildGitHubHeaders(cfg.token, false) },
+            3500
+          );
           if (!res.ok) return '';
           const list = await res.json();
           if (Array.isArray(list)) {
@@ -922,15 +1014,23 @@
         const gistId = await resolveSharedGistId(cfg);
         if (!gistId) return null;
         try {
-          let res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
-            headers: buildGitHubHeaders(cfg.token, false),
-            cache: 'no-store'
-          });
-          if (res.status === 401 || res.status === 403) {
-            res = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`, {
-              headers: { Accept: 'application/vnd.github+json' },
+          let res = await fetchWithTimeout(
+            `https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`,
+            {
+              headers: buildGitHubHeaders(cfg.token, false),
               cache: 'no-store'
-            });
+            },
+            3500
+          );
+          if (res.status === 401 || res.status === 403) {
+            res = await fetchWithTimeout(
+              `https://api.github.com/gists/${encodeURIComponent(gistId)}?_t=${Date.now()}`,
+              {
+                headers: { Accept: 'application/vnd.github+json' },
+                cache: 'no-store'
+              },
+              3500
+            );
           }
           if (!res.ok) return null;
           const data = await res.json();
@@ -938,7 +1038,7 @@
           if (!fileObj) return null;
           let rawContent = fileObj.content;
           if (fileObj.truncated && fileObj.raw_url) {
-            const rawRes = await fetch(`${fileObj.raw_url}?_t=${Date.now()}`, { cache: 'no-store' });
+            const rawRes = await fetchWithTimeout(`${fileObj.raw_url}?_t=${Date.now()}`, { cache: 'no-store' }, 3500);
             if (rawRes.ok) rawContent = await rawRes.text();
           }
           if (!rawContent) return null;
@@ -968,11 +1068,15 @@
             ? `https://api.github.com/gists/${encodeURIComponent(gistId)}`
             : 'https://api.github.com/gists';
           const method = gistId ? 'PATCH' : 'POST';
-          const res = await fetch(url, {
-            method,
-            headers: buildGitHubHeaders(cfg.token, true),
-            body: JSON.stringify(payload)
-          });
+          const res = await fetchWithTimeout(
+            url,
+            {
+              method,
+              headers: buildGitHubHeaders(cfg.token, true),
+              body: JSON.stringify(payload)
+            },
+            3500
+          );
           if (!res.ok) return false;
           const data = await res.json();
           if (data && data.id && data.id !== gistId) {
@@ -1245,16 +1349,17 @@
 
       // ==================== AUTENTICACIÓN (LOGIN / REGISTRO) ====================
       function renderLoginFormHtml() {
+        const courseCount = appState.db.courses.length;
         const studentCount = appState.db.students.length;
         const syncingBanner = !appState.initialCloudReady
-          ? `<div class="mb-4 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center gap-2.5 text-xs text-blue-700 font-medium">
+          ? `<div id="auth-cloud-status-banner" class="mb-4 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center gap-2.5 text-xs text-blue-700 font-medium">
                <span class="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
                <span>Sincronizando catálogo y estudiantes con la nube en tiempo real...</span>
              </div>`
-          : `<div class="mb-4 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-700 font-medium">
+          : `<div id="auth-cloud-status-banner" class="mb-4 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-700 font-medium">
                <span class="flex items-center gap-1.5">
                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                 <span>Nube PUMA STEAM en línea (${studentCount} estudiante${studentCount === 1 ? '' : 's'} registrado${studentCount === 1 ? '' : 's'})</span>
+                 <span>Conectado en vivo · ${courseCount} cursos · ${studentCount} estudiante${studentCount === 1 ? '' : 's'}</span>
                </span>
                <span class="text-[11px] font-semibold">Hermosillo UTC-7</span>
              </div>`;
@@ -1412,13 +1517,10 @@
             const u = document.getElementById('login-user').value.trim();
             const p = document.getElementById('login-pass').value;
             const btn = document.getElementById('login-submit-btn');
-            if (btn) {
-              btn.disabled = true;
-              btn.textContent = 'Verificando en la nube...';
-            }
 
+            // Acceso inmediato para el Docente / Administrador sin bloqueo de red
             if (u === ADMIN_USER && p === ADMIN_PASS) {
-              await syncNow({ push: false, silent: true, skipRender: true });
+              appState.initialCloudReady = true;
               appState.session = {
                 role: 'admin',
                 user: {
@@ -1431,10 +1533,21 @@
               appState.activeView = 'dashboard';
               renderMain();
               showToast('Bienvenido, Mtro. Francisco Tapia', 'success');
+              syncNow({ push: false, silent: true, skipRender: false });
               return;
             }
 
-            await syncNow({ push: false, silent: true, skipRender: true });
+            if (btn) {
+              btn.disabled = true;
+              btn.textContent = 'Verificando acceso...';
+            }
+
+            await Promise.race([
+              syncNow({ push: false, silent: true, skipRender: true }),
+              new Promise(r => setTimeout(r, 1800))
+            ]);
+            appState.initialCloudReady = true;
+
             const stu = appState.db.students.find(
               s => !isDemoStudentRecord(s) && s.username.toLowerCase() === u.toLowerCase() && s.password === p
             );
@@ -1474,7 +1587,11 @@
               btn.textContent = 'Sincronizando registro...';
             }
 
-            await syncNow({ push: false, silent: true, skipRender: true });
+            await Promise.race([
+              syncNow({ push: false, silent: true, skipRender: true }),
+              new Promise(r => setTimeout(r, 1800))
+            ]);
+            appState.initialCloudReady = true;
 
             if (
               username.toLowerCase() === ADMIN_USER.toLowerCase() ||
@@ -1507,11 +1624,11 @@
               }
             });
 
-            await saveState({ isStructural: true, silent: true });
             appState.session = { role: 'student', user: newStudent };
             appState.activeView = 'dashboard';
             renderMain();
             showToast('Cuenta creada y sincronizada en la nube', 'success');
+            saveState({ isStructural: true, silent: true });
           });
         }
       }
@@ -4532,13 +4649,48 @@
       }
 
       // ==================== ARRANQUE Y CICLO EN TIEMPO REAL ====================
+      function updateAuthBannerIfVisible() {
+        const banner = document.getElementById('auth-cloud-status-banner');
+        if (!banner) return;
+        const courseCount = appState.db.courses.length;
+        const studentCount = appState.db.students.length;
+        banner.className = 'mb-4 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-700 font-medium';
+        banner.innerHTML = `
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span>Conectado en vivo · ${courseCount} cursos · ${studentCount} estudiante${studentCount === 1 ? '' : 's'}</span>
+          </span>
+          <span class="text-[11px] font-semibold">Hermosillo UTC-7</span>
+        `;
+      }
+
       async function initCloudBoot() {
         renderAuth();
-        await syncNow({ push: false, silent: true, skipRender: true });
+
+        const fallbackTimer = setTimeout(() => {
+          if (!appState.initialCloudReady) {
+            appState.initialCloudReady = true;
+            if (!appState.session) {
+              if (!isUserTyping()) renderAuth();
+              else updateAuthBannerIfVisible();
+            }
+          }
+        }, 2200);
+
+        try {
+          await Promise.race([
+            syncNow({ push: false, silent: true, skipRender: true }),
+            new Promise(r => setTimeout(r, 2400))
+          ]);
+        } catch (e) {}
+
+        clearTimeout(fallbackTimer);
         appState.initialCloudReady = true;
-        if (!appState.session && !isUserTyping()) {
-          renderAuth();
-        } else if (appState.session) {
+
+        if (!appState.session) {
+          if (!isUserTyping()) renderAuth();
+          else updateAuthBannerIfVisible();
+        } else {
           refreshActiveViewSafely();
         }
       }
