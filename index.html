@@ -166,6 +166,12 @@
       const DEFAULT_DATA = {
         meta: {
           structureUpdatedAt: 1,
+          deletedCourses: {},
+          deletedModules: {},
+          deletedResources: {},
+          deletedAssignments: {},
+          deletedAnnouncements: {},
+          deletedProducts: {},
           deletedAttendance: {},
           deletedSubmissions: {},
           deletedStudents: {
@@ -368,6 +374,7 @@
 
       function normalizeCourseGrading(course) {
         if (!course || typeof course !== 'object') return course;
+        course.updatedAt = Number(course.updatedAt || 1);
         const gc = course.gradingConfig && typeof course.gradingConfig === 'object' ? course.gradingConfig : {};
         course.gradingConfig = {
           platformWeight: Number.isFinite(Number(gc.platformWeight)) ? Number(gc.platformWeight) : 30,
@@ -381,13 +388,15 @@
               id: `prod-${course.id}-1`,
               title: 'Producto Evaluable 1',
               weight: 30,
-              description: 'Evaluación independiente de secuencias.'
+              description: 'Evaluación independiente de secuencias.',
+              updatedAt: 1
             },
             {
               id: `prod-${course.id}-2`,
               title: 'Producto Evaluable 2',
               weight: 30,
-              description: 'Proyecto o evaluación sumativa.'
+              description: 'Proyecto o evaluación sumativa.',
+              updatedAt: 1
             }
           ];
         } else {
@@ -395,7 +404,8 @@
             id: String(p.id || uid('prod')),
             title: String(p.title || 'Producto'),
             weight: Number.isFinite(Number(p.weight)) ? Number(p.weight) : 0,
-            description: String(p.description || '')
+            description: String(p.description || ''),
+            updatedAt: Number(p.updatedAt || 1)
           }));
         }
         if (!course.productGrades || typeof course.productGrades !== 'object') {
@@ -406,15 +416,46 @@
         }
         if (!Array.isArray(course.announcements)) {
           course.announcements = [];
+        } else {
+          course.announcements = course.announcements.map(a => ({
+            ...a,
+            id: String(a.id || uid('ann')),
+            title: String(a.title || ''),
+            body: String(a.body || ''),
+            date: String(a.date || getSonoraISODate()),
+            updatedAt: Number(a.updatedAt || 1)
+          }));
         }
         if (!Array.isArray(course.modules)) {
           course.modules = [];
         } else {
           course.modules = course.modules.map(m => ({
             ...m,
+            id: String(m.id || uid('mod')),
             title: String(m.title || '').replace(/\bSesi[oó]n\b/gi, 'Secuencia').replace(/\bSesiones\b/gi, 'Secuencias'),
-            resources: Array.isArray(m.resources) ? m.resources : [],
-            assignments: Array.isArray(m.assignments) ? m.assignments : []
+            updatedAt: Number(m.updatedAt || 1),
+            resources: Array.isArray(m.resources)
+              ? m.resources.map(r => ({
+                  ...r,
+                  id: String(r.id || uid('res')),
+                  type: String(r.type || 'Recurso'),
+                  title: String(r.title || ''),
+                  detail: String(r.detail || ''),
+                  url: String(r.url || ''),
+                  updatedAt: Number(r.updatedAt || 1)
+                }))
+              : [],
+            assignments: Array.isArray(m.assignments)
+              ? m.assignments.map(asg => ({
+                  ...asg,
+                  id: String(asg.id || uid('task')),
+                  title: String(asg.title || ''),
+                  instructions: String(asg.instructions || ''),
+                  dueDate: String(asg.dueDate || getSonoraISODate()),
+                  maxPoints: Number(asg.maxPoints) > 0 ? Number(asg.maxPoints) : 100,
+                  updatedAt: Number(asg.updatedAt || 1)
+                }))
+              : []
           }));
         }
         return course;
@@ -490,6 +531,12 @@
         const normalized = {
           meta: {
             structureUpdatedAt: Number(meta.structureUpdatedAt || base.structureUpdatedAt || 1),
+            deletedCourses: meta.deletedCourses && typeof meta.deletedCourses === 'object' ? { ...meta.deletedCourses } : {},
+            deletedModules: meta.deletedModules && typeof meta.deletedModules === 'object' ? { ...meta.deletedModules } : {},
+            deletedResources: meta.deletedResources && typeof meta.deletedResources === 'object' ? { ...meta.deletedResources } : {},
+            deletedAssignments: meta.deletedAssignments && typeof meta.deletedAssignments === 'object' ? { ...meta.deletedAssignments } : {},
+            deletedAnnouncements: meta.deletedAnnouncements && typeof meta.deletedAnnouncements === 'object' ? { ...meta.deletedAnnouncements } : {},
+            deletedProducts: meta.deletedProducts && typeof meta.deletedProducts === 'object' ? { ...meta.deletedProducts } : {},
             deletedAttendance: meta.deletedAttendance && typeof meta.deletedAttendance === 'object' ? { ...meta.deletedAttendance } : {},
             deletedSubmissions: meta.deletedSubmissions && typeof meta.deletedSubmissions === 'object' ? { ...meta.deletedSubmissions } : {},
             deletedStudents: meta.deletedStudents && typeof meta.deletedStudents === 'object' ? { ...meta.deletedStudents } : {}
@@ -531,129 +578,182 @@
         cloudSyncing: false,
         initialCloudReady: false,
         lastSyncTime: '',
-        lastLocalWriteTs: 0
+        lastLocalWriteTs: 0,
+        lastLocalMutationTs: 0
       };
 
       // ==================== MOTOR UNIFICADO DE SINCRONIZACIÓN EN TIEMPO REAL ====================
-      function getCloudConfig() {
-        let cfg = { token: DEFAULT_GITHUB_TOKEN, gistId: DEFAULT_PUBLIC_GIST_ID };
-        try {
-          const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed.token) cfg.token = parsed.token;
-            if (parsed.gistId) cfg.gistId = parsed.gistId;
+      function mergeOrderedCollectionById(remoteList, localList, deletedMap, preferLocalOrder = true) {
+        const rArr = Array.isArray(remoteList) ? remoteList : [];
+        const lArr = Array.isArray(localList) ? localList : [];
+        const del = deletedMap && typeof deletedMap === 'object' ? deletedMap : {};
+
+        const byId = new Map();
+        [...rArr, ...lArr].forEach(item => {
+          if (!item || !item.id) return;
+          const id = String(item.id);
+          const itemTs = Number(item.updatedAt || 1);
+          const delTs = Number(del[id] || 0);
+          if (delTs > itemTs) return;
+          const prev = byId.get(id);
+          if (!prev || itemTs >= Number(prev.updatedAt || 0)) {
+            byId.set(id, JSON.parse(JSON.stringify(item)));
           }
-        } catch (e) {}
-        try {
-          const urlParams = new URLSearchParams(window.location.search);
-          const urlGist = urlParams.get('gist');
-          if (urlGist) cfg.gistId = urlGist.trim();
-        } catch (e) {}
-        return cfg;
+        });
+
+        const primary = preferLocalOrder ? lArr : rArr;
+        const secondary = preferLocalOrder ? rArr : lArr;
+        const orderedIds = [];
+        const seen = new Set();
+
+        [...primary, ...secondary].forEach(item => {
+          if (!item || !item.id) return;
+          const id = String(item.id);
+          if (byId.has(id) && !seen.has(id)) {
+            seen.add(id);
+            orderedIds.push(id);
+          }
+        });
+
+        return orderedIds.map(id => byId.get(id));
       }
 
-      function saveCloudConfig(token, gistId) {
-        try {
-          localStorage.setItem(
-            CLOUD_CONFIG_KEY,
-            JSON.stringify({
-              token: String(token || '').trim(),
-              gistId: String(gistId || '').trim()
-            })
+      function mergeCourseModulesGranular(remoteModules, localModules, metaMaps, preferLocalOrder) {
+        const rMods = Array.isArray(remoteModules) ? remoteModules : [];
+        const lMods = Array.isArray(localModules) ? localModules : [];
+        const rMap = new Map(rMods.filter(m => m && m.id).map(m => [String(m.id), m]));
+        const lMap = new Map(lMods.filter(m => m && m.id).map(m => [String(m.id), m]));
+
+        const baseMerged = mergeOrderedCollectionById(rMods, lMods, metaMaps.deletedModules, preferLocalOrder);
+        return baseMerged.map(mod => {
+          const id = String(mod.id);
+          const rMod = rMap.get(id) || {};
+          const lMod = lMap.get(id) || {};
+          const localModNewer = Number(lMod.updatedAt || 0) >= Number(rMod.updatedAt || 0);
+
+          const mergedResources = mergeOrderedCollectionById(
+            rMod.resources,
+            lMod.resources,
+            metaMaps.deletedResources,
+            localModNewer
           );
-        } catch (e) {}
-      }
+          const mergedAssignments = mergeOrderedCollectionById(
+            rMod.assignments,
+            lMod.assignments,
+            metaMaps.deletedAssignments,
+            localModNewer
+          );
 
-      let activeGistIdMemory = DEFAULT_PUBLIC_GIST_ID;
-      let syncLockPromise = Promise.resolve();
+          const maxChildTs = Math.max(
+            Number(mod.updatedAt || 1),
+            ...mergedResources.map(r => Number(r.updatedAt || 1)),
+            ...mergedAssignments.map(a => Number(a.updatedAt || 1))
+          );
 
-      function buildGitHubHeaders(token, hasBody = false) {
-        const headers = { Accept: 'application/vnd.github+json' };
-        const clean = String(token || '').trim();
-        if (clean) {
-          headers['Authorization'] = `token ${clean}`;
-        }
-        if (hasBody) {
-          headers['Content-Type'] = 'application/json';
-        }
-        return headers;
-      }
-
-      function getKvdbMasterKey() {
-        const cfg = getCloudConfig();
-        const space = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_steam_default').replace(/[^a-zA-Z0-9_-]/g, '');
-        return `puma_master_v2_${space}`;
-      }
-
-      function getAttendanceKey(att) {
-        if (!att) return '';
-        return `${String(att.courseId || '').trim()}|${String(att.date || '').trim()}|${String(att.studentId || '').trim()}`;
-      }
-
-      function getSubmissionKey(sub) {
-        if (!sub) return '';
-        return `${String(sub.courseId || '').trim()}|${String(sub.assignmentId || '').trim()}|${String(sub.studentId || '').trim()}`;
-      }
-
-      function mergeTimestampMaps(mapA, mapB) {
-        const out = {};
-        const a = mapA && typeof mapA === 'object' ? mapA : {};
-        const b = mapB && typeof mapB === 'object' ? mapB : {};
-        Object.keys(a).forEach(k => {
-          out[k] = Number(a[k] || 0);
+          return {
+            ...mod,
+            title: String(mod.title || '').replace(/\bSesi[oó]n\b/gi, 'Secuencia').replace(/\bSesiones\b/gi, 'Secuencias'),
+            updatedAt: maxChildTs,
+            resources: mergedResources,
+            assignments: mergedAssignments
+          };
         });
-        Object.keys(b).forEach(k => {
-          const ts = Number(b[k] || 0);
-          if (!out[k] || ts > out[k]) {
-            out[k] = ts;
-          }
-        });
-        return out;
       }
 
       function mergeDatabases(remoteRaw, localRaw) {
         const remote = normalizeDatabase(remoteRaw);
         const local = normalizeDatabase(localRaw);
 
+        const mergedDeletedCourses = mergeTimestampMaps(remote.meta.deletedCourses, local.meta.deletedCourses);
+        const mergedDeletedModules = mergeTimestampMaps(remote.meta.deletedModules, local.meta.deletedModules);
+        const mergedDeletedResources = mergeTimestampMaps(remote.meta.deletedResources, local.meta.deletedResources);
+        const mergedDeletedAssignments = mergeTimestampMaps(remote.meta.deletedAssignments, local.meta.deletedAssignments);
+        const mergedDeletedAnnouncements = mergeTimestampMaps(remote.meta.deletedAnnouncements, local.meta.deletedAnnouncements);
+        const mergedDeletedProducts = mergeTimestampMaps(remote.meta.deletedProducts, local.meta.deletedProducts);
         const mergedDeletedAttendance = mergeTimestampMaps(remote.meta.deletedAttendance, local.meta.deletedAttendance);
         const mergedDeletedSubmissions = mergeTimestampMaps(remote.meta.deletedSubmissions, local.meta.deletedSubmissions);
         const mergedDeletedStudents = mergeTimestampMaps(remote.meta.deletedStudents, local.meta.deletedStudents);
 
-        // 1. Estructura de cursos, secuencias y configuración de ponderación
-        const useLocalCourses = Number(local.meta.structureUpdatedAt || 0) >= Number(remote.meta.structureUpdatedAt || 0);
-        const primaryCourses = useLocalCourses ? local.courses : remote.courses;
-        const secondaryCourses = useLocalCourses ? remote.courses : local.courses;
-        const secondaryCourseMap = new Map(secondaryCourses.map(c => [c.id, c]));
+        const metaMaps = {
+          deletedCourses: mergedDeletedCourses,
+          deletedModules: mergedDeletedModules,
+          deletedResources: mergedDeletedResources,
+          deletedAssignments: mergedDeletedAssignments,
+          deletedAnnouncements: mergedDeletedAnnouncements,
+          deletedProducts: mergedDeletedProducts
+        };
 
-        const chosenCourses = primaryCourses.map(c => {
-          const copy = normalizeCourseGrading(JSON.parse(JSON.stringify(c)));
-          const other = secondaryCourseMap.get(copy.id);
-          if (other) {
-            // Unir inscripciones de estudiantes activos sin perder matrículas recientes
+        // 1. Fusión granular de cursos, secuencias (modules), recursos, actividades, avisos, productos y ponderaciones
+        const preferLocalStructure = Number(local.meta.structureUpdatedAt || 0) >= Number(remote.meta.structureUpdatedAt || 0);
+        const remoteCourseMap = new Map((remote.courses || []).filter(c => c && c.id).map(c => [String(c.id), c]));
+        const localCourseMap = new Map((local.courses || []).filter(c => c && c.id).map(c => [String(c.id), c]));
+
+        const baseCourses = mergeOrderedCollectionById(
+          remote.courses,
+          local.courses,
+          mergedDeletedCourses,
+          preferLocalStructure
+        );
+
+        const chosenCourses = baseCourses.map(baseCourse => {
+          const cid = String(baseCourse.id);
+          const rCourse = remoteCourseMap.get(cid);
+          const lCourse = localCourseMap.get(cid);
+
+          if (rCourse && lCourse) {
+            const localCourseNewer = Number(lCourse.updatedAt || 0) >= Number(rCourse.updatedAt || 0) || preferLocalStructure;
+            const primary = normalizeCourseGrading(JSON.parse(JSON.stringify(localCourseNewer ? lCourse : rCourse)));
+            const other = normalizeCourseGrading(JSON.parse(JSON.stringify(localCourseNewer ? rCourse : lCourse)));
+
+            // Unir inscripciones de estudiantes activos
             const enrolledSet = new Set([
               ...(Array.isArray(other.enrolledStudentIds) ? other.enrolledStudentIds : []),
-              ...(Array.isArray(copy.enrolledStudentIds) ? copy.enrolledStudentIds : [])
+              ...(Array.isArray(primary.enrolledStudentIds) ? primary.enrolledStudentIds : [])
             ]);
-            copy.enrolledStudentIds = Array.from(enrolledSet).filter(id => id && !mergedDeletedStudents[id]);
+            primary.enrolledStudentIds = Array.from(enrolledSet).filter(id => id && !mergedDeletedStudents[id]);
 
             // Elegir configuración de ponderación más reciente
-            const copyCfgTs = Number(copy.gradingConfig?.updatedAt || 0);
-            const otherCfgTs = Number(other.gradingConfig?.updatedAt || 0);
-            if (otherCfgTs > copyCfgTs && other.gradingConfig) {
-              copy.gradingConfig = JSON.parse(JSON.stringify(other.gradingConfig));
+            const pCfgTs = Number(primary.gradingConfig?.updatedAt || 0);
+            const oCfgTs = Number(other.gradingConfig?.updatedAt || 0);
+            if (oCfgTs > pCfgTs && other.gradingConfig) {
+              primary.gradingConfig = JSON.parse(JSON.stringify(other.gradingConfig));
             }
+
+            // Fusionar secuencias (modules), recursos y actividades granularmente sin perder nuevas secuencias
+            primary.modules = mergeCourseModulesGranular(
+              rCourse.modules,
+              lCourse.modules,
+              metaMaps,
+              localCourseNewer
+            );
+
+            // Fusionar avisos del curso
+            primary.announcements = mergeOrderedCollectionById(
+              rCourse.announcements,
+              lCourse.announcements,
+              mergedDeletedAnnouncements,
+              localCourseNewer
+            );
+
+            // Fusionar productos evaluables independientes
+            primary.products = mergeOrderedCollectionById(
+              rCourse.products,
+              lCourse.products,
+              mergedDeletedProducts,
+              localCourseNewer
+            );
 
             // Fusionar calificaciones de productos evaluables independientes por celda y timestamp
             const mergedProdGrades = {};
             const allProdIds = new Set([
               ...Object.keys(other.productGrades || {}),
-              ...Object.keys(copy.productGrades || {})
+              ...Object.keys(primary.productGrades || {})
             ]);
             allProdIds.forEach(pid => {
+              if (mergedDeletedProducts[pid]) return;
               mergedProdGrades[pid] = {};
               const rGrades = (other.productGrades && other.productGrades[pid]) || {};
-              const lGrades = (copy.productGrades && copy.productGrades[pid]) || {};
+              const lGrades = (primary.productGrades && primary.productGrades[pid]) || {};
               const stuIds = new Set([...Object.keys(rGrades), ...Object.keys(lGrades)]);
               stuIds.forEach(sid => {
                 if (!sid || mergedDeletedStudents[sid]) return;
@@ -668,14 +768,22 @@
                 }
               });
             });
-            copy.productGrades = mergedProdGrades;
+            primary.productGrades = mergedProdGrades;
+            primary.updatedAt = Math.max(
+              Number(rCourse.updatedAt || 1),
+              Number(lCourse.updatedAt || 1),
+              ...primary.modules.map(m => Number(m.updatedAt || 1))
+            );
+            return normalizeCourseGrading(primary);
           }
-          return copy;
+
+          return normalizeCourseGrading(JSON.parse(JSON.stringify(lCourse || rCourse || baseCourse)));
         });
 
         const chosenStructureTs = Math.max(
           Number(remote.meta.structureUpdatedAt || 1),
-          Number(local.meta.structureUpdatedAt || 1)
+          Number(local.meta.structureUpdatedAt || 1),
+          ...chosenCourses.map(c => Number(c.updatedAt || 1))
         );
 
         // 2. Estudiantes: unión por ID respetando eliminaciones y excluyendo alumno demo
@@ -731,6 +839,12 @@
         const mergedResult = {
           meta: {
             structureUpdatedAt: chosenStructureTs,
+            deletedCourses: mergedDeletedCourses,
+            deletedModules: mergedDeletedModules,
+            deletedResources: mergedDeletedResources,
+            deletedAssignments: mergedDeletedAssignments,
+            deletedAnnouncements: mergedDeletedAnnouncements,
+            deletedProducts: mergedDeletedProducts,
             deletedAttendance: mergedDeletedAttendance,
             deletedSubmissions: mergedDeletedSubmissions,
             deletedStudents: mergedDeletedStudents
@@ -900,7 +1014,7 @@
       }
 
       async function syncNow({ push = false, silent = true, skipRender = false, isStructural = false } = {}) {
-        if (!push && Date.now() - appState.lastLocalWriteTs < 1500) {
+        if (!push && (Date.now() - appState.lastLocalWriteTs < 2500 || Date.now() - appState.lastLocalMutationTs < 2500)) {
           return { ok: true, changed: false };
         }
 
@@ -909,8 +1023,10 @@
             appState.cloudSyncing = true;
             try {
               if (isStructural) {
-                appState.db.meta.structureUpdatedAt = Date.now();
-                appState.lastLocalWriteTs = Date.now();
+                const nowTs = Date.now();
+                appState.db.meta.structureUpdatedAt = nowTs;
+                appState.lastLocalWriteTs = nowTs;
+                appState.lastLocalMutationTs = nowTs;
               }
 
               appState.db = purgeDemoStudentData(normalizeDatabase(appState.db));
@@ -940,7 +1056,8 @@
 
               let writeOk = true;
               const kvNeedsUpdate = !kvData || JSON.stringify(kvData) !== afterJson;
-              if (push || kvNeedsUpdate) {
+              const gistNeedsUpdate = !gistData || JSON.stringify(gistData) !== afterJson;
+              if (push || kvNeedsUpdate || gistNeedsUpdate) {
                 const [kvOk, gistOk] = await Promise.all([
                   pushKvdbDatabase(appState.db),
                   pushGistDatabase(appState.db)
@@ -980,12 +1097,19 @@
       }
 
       function saveState(options = {}) {
-        const isStructural = options.isStructural !== undefined ? options.isStructural : true;
-        const silent = options.silent !== undefined ? options.silent : true;
+        const isObj = options && typeof options === 'object';
+        const isStructural = typeof options === 'boolean'
+          ? options
+          : isObj && options.isStructural !== undefined
+          ? options.isStructural
+          : true;
+        const silent = isObj && options.silent !== undefined ? options.silent : true;
+        const nowTs = Date.now();
         if (isStructural) {
-          appState.db.meta.structureUpdatedAt = Date.now();
+          appState.db.meta.structureUpdatedAt = nowTs;
         }
-        appState.lastLocalWriteTs = Date.now();
+        appState.lastLocalWriteTs = nowTs;
+        appState.lastLocalMutationTs = nowTs;
         appState.db = purgeDemoStudentData(normalizeDatabase(appState.db));
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(appState.db));
@@ -1757,11 +1881,15 @@
             `, () => {
               document.getElementById('cancel-del-c').addEventListener('click', closeModal);
               document.getElementById('confirm-del-c').addEventListener('click', async () => {
+                const nowTs = Date.now();
+                if (!appState.db.meta.deletedCourses) appState.db.meta.deletedCourses = {};
+                appState.db.meta.deletedCourses[cid] = nowTs + 1000;
                 appState.db.courses = appState.db.courses.filter(c => c.id !== cid);
+                appState.db.meta.structureUpdatedAt = nowTs;
                 closeModal();
                 renderMain();
-                await saveState({ isStructural: true });
-                showToast('Materia eliminada', 'info');
+                await saveState(true);
+                showToast('Materia eliminada y sincronizada en la nube', 'info');
               });
             });
           });
@@ -1849,6 +1977,7 @@
             const title = document.getElementById('cf-title').value.trim();
             const category = document.getElementById('cf-cat').value.trim();
             const description = document.getElementById('cf-desc').value.trim();
+            const nowTs = Date.now();
 
             if (existingCourse) {
               existingCourse.code = code;
@@ -1856,9 +1985,14 @@
               existingCourse.title = title;
               existingCourse.category = category;
               existingCourse.description = description;
+              existingCourse.updatedAt = nowTs;
             } else {
+              const newCourseId = uid('course');
+              if (appState.db.meta.deletedCourses) {
+                delete appState.db.meta.deletedCourses[newCourseId];
+              }
               const newCourse = normalizeCourseGrading({
-                id: uid('course'),
+                id: newCourseId,
                 code,
                 title,
                 category,
@@ -1867,15 +2001,16 @@
                 description,
                 color: 'from-blue-600 to-indigo-700',
                 enrolledStudentIds: appState.db.students.map(s => s.id),
+                updatedAt: nowTs,
                 gradingConfig: {
                   platformWeight: 30,
                   attendanceWeight: 10,
                   expectedSessions: 0,
-                  updatedAt: Date.now()
+                  updatedAt: nowTs
                 },
                 products: [
-                  { id: uid('prod'), title: 'Proyecto Parcial', weight: 30, description: 'Producto evaluable independiente.' },
-                  { id: uid('prod'), title: 'Producto Integrador Final', weight: 30, description: 'Evaluación sumativa.' }
+                  { id: uid('prod'), title: 'Proyecto Parcial', weight: 30, description: 'Producto evaluable independiente.', updatedAt: nowTs },
+                  { id: uid('prod'), title: 'Producto Integrador Final', weight: 30, description: 'Evaluación sumativa.', updatedAt: nowTs }
                 ],
                 productGrades: {},
                 announcements: [],
@@ -1884,10 +2019,11 @@
               appState.db.courses.push(newCourse);
             }
 
+            appState.db.meta.structureUpdatedAt = nowTs;
             closeModal();
             renderMain();
-            await saveState({ isStructural: true });
-            showToast('Materia guardada y sincronizada', 'success');
+            await saveState(true);
+            showToast('Materia guardada y sincronizada en la nube', 'success');
           });
         });
       }
@@ -2132,6 +2268,9 @@
 
           const modBtn = document.getElementById('btn-add-module');
           if (modBtn) modBtn.addEventListener('click', () => openAddModuleModal(course));
+
+          const emptyAddModBtn = document.getElementById('btn-empty-add-module');
+          if (emptyAddModBtn) emptyAddModBtn.addEventListener('click', () => openAddModuleModal(course));
         }
 
         if (appState.courseTab === 'gradebook') {
@@ -2141,6 +2280,10 @@
         } else {
           wireCourseSequencesEvents(course, container, isAdmin, userId);
         }
+      }
+
+      function renderCourseContentTab(course, isAdmin, userId) {
+        return renderCourseSequencesContentHtml(course, isAdmin, userId);
       }
 
       function renderCourseSequencesContentHtml(course, isAdmin, userId) {
@@ -2178,8 +2321,15 @@
           <div class="space-y-5">
             ${
               (course.modules || []).length === 0
-                ? `<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
-                    Aún no hay secuencias publicadas en este curso.
+                ? `<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+                    <p class="text-sm text-slate-500 mb-4">Aún no hay secuencias publicadas en este curso.</p>
+                    ${
+                      isAdmin
+                        ? `<button type="button" id="btn-empty-add-module" class="px-4 py-2.5 rounded-xl bg-puma-500 hover:bg-puma-600 text-white text-xs font-bold shadow-xs cursor-pointer transition">
+                            + Crear Primera Secuencia
+                          </button>`
+                        : ''
+                    }
                   </div>`
                 : course.modules
                     .map(
@@ -2305,17 +2455,23 @@
           container.querySelectorAll('[data-del-ann]').forEach(btn => {
             btn.addEventListener('click', async () => {
               const id = btn.getAttribute('data-del-ann');
+              const nowTs = Date.now();
+              if (!appState.db.meta.deletedAnnouncements) appState.db.meta.deletedAnnouncements = {};
+              appState.db.meta.deletedAnnouncements[id] = nowTs + 1000;
               course.announcements = (course.announcements || []).filter(a => a.id !== id);
+              course.updatedAt = nowTs;
+              appState.db.meta.structureUpdatedAt = nowTs;
               renderCourseDetail();
-              await saveState({ isStructural: true });
-              showToast('Aviso eliminado', 'info');
+              await saveState(true);
+              showToast('Aviso eliminado y sincronizado', 'info');
             });
           });
 
           container.querySelectorAll('[data-del-mod]').forEach(btn => {
             btn.addEventListener('click', () => {
               const modId = btn.getAttribute('data-del-mod');
-              const mod = (course.modules || []).find(m => m.id === modId);
+              const targetCourse = getCourseById(course.id) || course;
+              const mod = (targetCourse.modules || []).find(m => m.id === modId);
               if (!mod) return;
               openModal('Eliminar Secuencia', `
                 <p class="text-sm text-slate-600 mb-5">¿Confirmas que deseas eliminar permanentemente la secuencia <strong>${esc(mod.title)}</strong>?</p>
@@ -2326,10 +2482,16 @@
               `, () => {
                 document.getElementById('cancel-del-mod').addEventListener('click', closeModal);
                 document.getElementById('confirm-del-mod').addEventListener('click', async () => {
-                  course.modules = (course.modules || []).filter(m => m.id !== modId);
+                  const nowTs = Date.now();
+                  const liveCourse = getCourseById(course.id) || course;
+                  if (!appState.db.meta.deletedModules) appState.db.meta.deletedModules = {};
+                  appState.db.meta.deletedModules[modId] = nowTs + 1000;
+                  liveCourse.modules = (liveCourse.modules || []).filter(m => m.id !== modId);
+                  liveCourse.updatedAt = nowTs;
+                  appState.db.meta.structureUpdatedAt = nowTs;
                   closeModal();
                   renderCourseDetail();
-                  await saveState({ isStructural: true });
+                  await saveState(true);
                   showToast('Secuencia eliminada en tiempo real', 'info');
                 });
               });
@@ -2339,27 +2501,36 @@
           container.querySelectorAll('[data-edit-mod]').forEach(btn => {
             btn.addEventListener('click', () => {
               const modId = btn.getAttribute('data-edit-mod');
-              const mod = (course.modules || []).find(m => m.id === modId);
+              const liveCourse = getCourseById(course.id) || course;
+              const mod = (liveCourse.modules || []).find(m => m.id === modId);
               if (!mod) return;
-              openEditModuleModal(course, mod);
+              openEditModuleModal(liveCourse, mod);
             });
           });
 
           container.querySelectorAll('[data-add-res]').forEach(btn => {
             btn.addEventListener('click', () => {
               const modId = btn.getAttribute('data-add-res');
-              openAddResourceModal(course, modId);
+              const liveCourse = getCourseById(course.id) || course;
+              openAddResourceModal(liveCourse, modId);
             });
           });
 
           container.querySelectorAll('[data-del-res]').forEach(btn => {
             btn.addEventListener('click', async () => {
               const [modId, resId] = btn.getAttribute('data-del-res').split('|');
-              const mod = (course.modules || []).find(m => m.id === modId);
+              const liveCourse = getCourseById(course.id) || course;
+              const mod = (liveCourse.modules || []).find(m => m.id === modId);
               if (!mod) return;
+              const nowTs = Date.now();
+              if (!appState.db.meta.deletedResources) appState.db.meta.deletedResources = {};
+              appState.db.meta.deletedResources[resId] = nowTs + 1000;
               mod.resources = (mod.resources || []).filter(r => r.id !== resId);
+              mod.updatedAt = nowTs;
+              liveCourse.updatedAt = nowTs;
+              appState.db.meta.structureUpdatedAt = nowTs;
               renderCourseDetail();
-              await saveState({ isStructural: true });
+              await saveState(true);
               showToast('Recurso eliminado', 'info');
             });
           });
@@ -2367,18 +2538,26 @@
           container.querySelectorAll('[data-add-assign]').forEach(btn => {
             btn.addEventListener('click', () => {
               const modId = btn.getAttribute('data-add-assign');
-              openAddAssignmentModal(course, modId);
+              const liveCourse = getCourseById(course.id) || course;
+              openAddAssignmentModal(liveCourse, modId);
             });
           });
 
           container.querySelectorAll('[data-del-assign]').forEach(btn => {
             btn.addEventListener('click', async () => {
               const [modId, assignId] = btn.getAttribute('data-del-assign').split('|');
-              const mod = (course.modules || []).find(m => m.id === modId);
+              const liveCourse = getCourseById(course.id) || course;
+              const mod = (liveCourse.modules || []).find(m => m.id === modId);
               if (!mod) return;
+              const nowTs = Date.now();
+              if (!appState.db.meta.deletedAssignments) appState.db.meta.deletedAssignments = {};
+              appState.db.meta.deletedAssignments[assignId] = nowTs + 1000;
               mod.assignments = (mod.assignments || []).filter(a => a.id !== assignId);
+              mod.updatedAt = nowTs;
+              liveCourse.updatedAt = nowTs;
+              appState.db.meta.structureUpdatedAt = nowTs;
               renderCourseDetail();
-              await saveState({ isStructural: true });
+              await saveState(true);
               showToast('Actividad eliminada', 'info');
             });
           });
@@ -2435,10 +2614,14 @@
           document.getElementById('enroll-form').addEventListener('submit', async e => {
             e.preventDefault();
             const checked = Array.from(document.querySelectorAll('input[name="enroll-stu"]:checked')).map(c => c.value);
-            course.enrolledStudentIds = checked;
+            const liveCourse = getCourseById(course.id) || course;
+            const nowTs = Date.now();
+            liveCourse.enrolledStudentIds = checked;
+            liveCourse.updatedAt = nowTs;
+            appState.db.meta.structureUpdatedAt = nowTs;
             closeModal();
             renderCourseDetail();
-            await saveState({ isStructural: true });
+            await saveState(true);
             showToast('Matrícula del curso actualizada', 'success');
           });
         });
@@ -2464,48 +2647,82 @@
           document.getElementById('ann-cancel').addEventListener('click', closeModal);
           document.getElementById('ann-form').addEventListener('submit', async e => {
             e.preventDefault();
-            course.announcements.unshift({
-              id: uid('ann'),
+            const liveCourse = getCourseById(course.id) || course;
+            const nowTs = Date.now();
+            const newAnnId = uid('ann');
+            if (appState.db.meta.deletedAnnouncements) {
+              delete appState.db.meta.deletedAnnouncements[newAnnId];
+            }
+            liveCourse.announcements = Array.isArray(liveCourse.announcements) ? liveCourse.announcements : [];
+            liveCourse.announcements.unshift({
+              id: newAnnId,
               title: document.getElementById('ann-title').value.trim(),
               body: document.getElementById('ann-body').value.trim(),
-              date: getSonoraISODate()
+              date: getSonoraISODate(),
+              updatedAt: nowTs
             });
+            liveCourse.updatedAt = nowTs;
+            appState.db.meta.structureUpdatedAt = nowTs;
             closeModal();
             renderCourseDetail();
-            await saveState({ isStructural: true });
-            showToast('Aviso publicado', 'success');
+            await saveState(true);
+            showToast('Aviso publicado en tiempo real', 'success');
           });
         });
       }
 
       function openAddModuleModal(course) {
-        const nextNum = (course.modules || []).length + 1;
+        const targetCourse = getCourseById(course?.id || appState.selectedCourseId) || course;
+        if (!targetCourse) return;
+        const nextNum = (Array.isArray(targetCourse.modules) ? targetCourse.modules.length : 0) + 1;
         openModal('Nueva Secuencia Didáctica', `
           <form id="mod-form" class="space-y-3.5">
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">Título de la Secuencia</label>
-              <input id="mod-title" type="text" required value="Secuencia ${nextNum}: " placeholder="Ej. Secuencia 1: Introducción..."
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              <input id="mod-title" type="text" required value="Secuencia ${nextNum}: " placeholder="Ej. Secuencia ${nextNum}: Nombre del tema..."
+                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-puma-500" />
             </div>
             <div class="flex justify-end gap-2">
               <button type="button" id="mod-cancel" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer">Cancelar</button>
-              <button type="submit" class="px-4 py-2 rounded-xl bg-puma-500 hover:bg-puma-600 text-white text-xs font-semibold cursor-pointer">Crear Secuencia</button>
+              <button type="submit" id="mod-submit-btn" class="px-4 py-2 rounded-xl bg-puma-500 hover:bg-puma-600 text-white text-xs font-semibold cursor-pointer">Crear Secuencia</button>
             </div>
           </form>
         `, () => {
+          const titleInput = document.getElementById('mod-title');
+          if (titleInput) {
+            titleInput.focus();
+            titleInput.setSelectionRange(titleInput.value.length, titleInput.value.length);
+          }
           document.getElementById('mod-cancel').addEventListener('click', closeModal);
           document.getElementById('mod-form').addEventListener('submit', async e => {
             e.preventDefault();
-            course.modules.push({
-              id: uid('mod'),
-              title: document.getElementById('mod-title').value.trim(),
+            const rawTitle = document.getElementById('mod-title').value.trim();
+            const title = rawTitle || `Secuencia ${nextNum}`;
+            const liveCourse = getCourseById(targetCourse.id) || targetCourse;
+            const nowTs = Date.now();
+            const newModId = uid('mod');
+
+            if (appState.db.meta.deletedModules) {
+              delete appState.db.meta.deletedModules[newModId];
+            }
+
+            liveCourse.modules = Array.isArray(liveCourse.modules) ? liveCourse.modules : [];
+            liveCourse.modules.push({
+              id: newModId,
+              title,
               resources: [],
-              assignments: []
+              assignments: [],
+              updatedAt: nowTs
             });
+            liveCourse.updatedAt = nowTs;
+            appState.db.meta.structureUpdatedAt = nowTs;
+            appState.lastLocalMutationTs = nowTs;
+            appState.courseTab = 'content';
+
             closeModal();
             renderCourseDetail();
-            await saveState({ isStructural: true });
-            showToast('Secuencia agregada y sincronizada en tiempo real', 'success');
+            await saveState(true);
+            showToast('Secuencia creada y sincronizada en tiempo real con la nube', 'success');
           });
         });
       }
@@ -2516,7 +2733,7 @@
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">Título de la Secuencia</label>
               <input id="edit-mod-title" type="text" required value="${esc(mod.title)}"
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-puma-500" />
             </div>
             <div class="flex justify-end gap-2">
               <button type="button" id="edit-mod-cancel" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer">Cancelar</button>
@@ -2527,17 +2744,25 @@
           document.getElementById('edit-mod-cancel').addEventListener('click', closeModal);
           document.getElementById('edit-mod-form').addEventListener('submit', async e => {
             e.preventDefault();
-            mod.title = document.getElementById('edit-mod-title').value.trim();
+            const liveCourse = getCourseById(course.id) || course;
+            const liveMod = (liveCourse.modules || []).find(m => m.id === mod.id) || mod;
+            const nowTs = Date.now();
+            liveMod.title = document.getElementById('edit-mod-title').value.trim();
+            liveMod.updatedAt = nowTs;
+            liveCourse.updatedAt = nowTs;
+            appState.db.meta.structureUpdatedAt = nowTs;
+            appState.lastLocalMutationTs = nowTs;
             closeModal();
             renderCourseDetail();
-            await saveState({ isStructural: true });
-            showToast('Secuencia actualizada', 'success');
+            await saveState(true);
+            showToast('Secuencia actualizada en tiempo real', 'success');
           });
         });
       }
 
       function openAddResourceModal(course, modId) {
-        const mod = (course.modules || []).find(m => m.id === modId);
+        const liveCourse = getCourseById(course.id) || course;
+        const mod = (liveCourse.modules || []).find(m => m.id === modId);
         if (!mod) return;
         openModal(`Nuevo Recurso · ${mod.title}`, `
           <form id="res-form" class="space-y-3.5">
@@ -2575,23 +2800,37 @@
           document.getElementById('res-cancel').addEventListener('click', closeModal);
           document.getElementById('res-form').addEventListener('submit', async e => {
             e.preventDefault();
-            mod.resources.push({
-              id: uid('res'),
+            const currentCourse = getCourseById(course.id) || liveCourse;
+            const currentMod = (currentCourse.modules || []).find(m => m.id === modId) || mod;
+            const nowTs = Date.now();
+            const newResId = uid('res');
+            if (appState.db.meta.deletedResources) {
+              delete appState.db.meta.deletedResources[newResId];
+            }
+            currentMod.resources = Array.isArray(currentMod.resources) ? currentMod.resources : [];
+            currentMod.resources.push({
+              id: newResId,
               type: document.getElementById('res-type').value,
               title: document.getElementById('res-title').value.trim(),
               detail: document.getElementById('res-detail').value.trim(),
-              url: document.getElementById('res-url').value.trim()
+              url: document.getElementById('res-url').value.trim(),
+              updatedAt: nowTs
             });
+            currentMod.updatedAt = nowTs;
+            currentCourse.updatedAt = nowTs;
+            appState.db.meta.structureUpdatedAt = nowTs;
+            appState.lastLocalMutationTs = nowTs;
             closeModal();
             renderCourseDetail();
-            await saveState({ isStructural: true });
-            showToast('Recurso agregado a la secuencia', 'success');
+            await saveState(true);
+            showToast('Recurso agregado a la secuencia y sincronizado', 'success');
           });
         });
       }
 
       function openAddAssignmentModal(course, modId) {
-        const mod = (course.modules || []).find(m => m.id === modId);
+        const liveCourse = getCourseById(course.id) || course;
+        const mod = (liveCourse.modules || []).find(m => m.id === modId);
         if (!mod) return;
         openModal(`Nueva Actividad Evaluable · ${mod.title}`, `
           <form id="assign-form" class="space-y-3.5">
@@ -2622,17 +2861,30 @@
           document.getElementById('as-cancel').addEventListener('click', closeModal);
           document.getElementById('assign-form').addEventListener('submit', async e => {
             e.preventDefault();
-            mod.assignments.push({
-              id: uid('task'),
+            const currentCourse = getCourseById(course.id) || liveCourse;
+            const currentMod = (currentCourse.modules || []).find(m => m.id === modId) || mod;
+            const nowTs = Date.now();
+            const newAssignId = uid('task');
+            if (appState.db.meta.deletedAssignments) {
+              delete appState.db.meta.deletedAssignments[newAssignId];
+            }
+            currentMod.assignments = Array.isArray(currentMod.assignments) ? currentMod.assignments : [];
+            currentMod.assignments.push({
+              id: newAssignId,
               title: document.getElementById('as-title').value.trim(),
               instructions: document.getElementById('as-inst').value.trim(),
               dueDate: document.getElementById('as-due').value,
-              maxPoints: Number(document.getElementById('as-pts').value) || 100
+              maxPoints: Number(document.getElementById('as-pts').value) || 100,
+              updatedAt: nowTs
             });
+            currentMod.updatedAt = nowTs;
+            currentCourse.updatedAt = nowTs;
+            appState.db.meta.structureUpdatedAt = nowTs;
+            appState.lastLocalMutationTs = nowTs;
             closeModal();
             renderCourseDetail();
-            await saveState({ isStructural: true });
-            showToast('Actividad publicada en la secuencia', 'success');
+            await saveState(true);
+            showToast('Actividad publicada en la secuencia y sincronizada', 'success');
           });
         });
       }
@@ -3003,16 +3255,20 @@
             const pw = Math.max(0, Math.min(100, Number(document.getElementById('gb-weight-platform').value) || 0));
             const aw = Math.max(0, Math.min(100, Number(document.getElementById('gb-weight-attendance').value) || 0));
             const es = Math.max(0, parseInt(document.getElementById('gb-expected-sessions').value, 10) || 0);
+            const nowTs = Date.now();
+            const liveCourse = getCourseById(course.id) || course;
 
-            course.gradingConfig = {
+            liveCourse.gradingConfig = {
               platformWeight: pw,
               attendanceWeight: aw,
               expectedSessions: es,
-              updatedAt: Date.now()
+              updatedAt: nowTs
             };
+            liveCourse.updatedAt = nowTs;
+            appState.db.meta.structureUpdatedAt = nowTs;
             renderCourseDetail();
-            await saveState({ isStructural: true });
-            const prodSum = (course.products || []).reduce((acc, p) => acc + Number(p.weight || 0), 0);
+            await saveState(true);
+            const prodSum = (liveCourse.products || []).reduce((acc, p) => acc + Number(p.weight || 0), 0);
             const total = pw + aw + prodSum;
             if (Math.abs(total - 100) < 0.01) {
               showToast('Ponderaciones guardadas (Total: 100%)', 'success');
@@ -3037,7 +3293,8 @@
         container.querySelectorAll('[data-del-product]').forEach(btn => {
           btn.addEventListener('click', () => {
             const prodId = btn.getAttribute('data-del-product');
-            const prod = (course.products || []).find(p => p.id === prodId);
+            const liveCourse = getCourseById(course.id) || course;
+            const prod = (liveCourse.products || []).find(p => p.id === prodId);
             if (!prod) return;
             openModal('Eliminar Producto Evaluable', `
               <p class="text-sm text-slate-600 mb-5">¿Seguro que deseas eliminar el producto <strong>${esc(prod.title)}</strong> (${esc(prod.weight)}%) y sus calificaciones registradas?</p>
@@ -3048,13 +3305,19 @@
             `, () => {
               document.getElementById('cancel-del-prod').addEventListener('click', closeModal);
               document.getElementById('confirm-del-prod').addEventListener('click', async () => {
-                course.products = (course.products || []).filter(p => p.id !== prodId);
-                if (course.productGrades && course.productGrades[prodId]) {
-                  delete course.productGrades[prodId];
+                const nowTs = Date.now();
+                const currentCourse = getCourseById(course.id) || liveCourse;
+                if (!appState.db.meta.deletedProducts) appState.db.meta.deletedProducts = {};
+                appState.db.meta.deletedProducts[prodId] = nowTs + 1000;
+                currentCourse.products = (currentCourse.products || []).filter(p => p.id !== prodId);
+                if (currentCourse.productGrades && currentCourse.productGrades[prodId]) {
+                  delete currentCourse.productGrades[prodId];
                 }
+                currentCourse.updatedAt = nowTs;
+                appState.db.meta.structureUpdatedAt = nowTs;
                 closeModal();
                 renderCourseDetail();
-                await saveState({ isStructural: true });
+                await saveState(true);
                 showToast('Producto eliminado del libro de calificaciones', 'info');
               });
             });
@@ -3150,23 +3413,35 @@
               const title = document.getElementById('pm-title').value.trim();
               const weight = Math.max(0, Math.min(100, Number(document.getElementById('pm-weight').value) || 0));
               const description = document.getElementById('pm-desc').value.trim();
+              const nowTs = Date.now();
+              const liveCourse = getCourseById(course.id) || course;
+              const liveExisting = prodId ? (liveCourse.products || []).find(p => p.id === prodId) : null;
 
-              if (existing) {
-                existing.title = title;
-                existing.weight = weight;
-                existing.description = description;
+              if (liveExisting) {
+                liveExisting.title = title;
+                liveExisting.weight = weight;
+                liveExisting.description = description;
+                liveExisting.updatedAt = nowTs;
               } else {
-                course.products.push({
-                  id: uid('prod'),
+                const newProdId = uid('prod');
+                if (appState.db.meta.deletedProducts) {
+                  delete appState.db.meta.deletedProducts[newProdId];
+                }
+                liveCourse.products = Array.isArray(liveCourse.products) ? liveCourse.products : [];
+                liveCourse.products.push({
+                  id: newProdId,
                   title,
                   weight,
-                  description
+                  description,
+                  updatedAt: nowTs
                 });
               }
+              liveCourse.updatedAt = nowTs;
+              appState.db.meta.structureUpdatedAt = nowTs;
               closeModal();
               renderCourseDetail();
-              await saveState({ isStructural: true });
-              showToast(existing ? 'Producto actualizado' : 'Producto evaluable agregado', 'success');
+              await saveState(true);
+              showToast(liveExisting ? 'Producto actualizado' : 'Producto evaluable agregado', 'success');
             });
           }
         );
