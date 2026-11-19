@@ -9,6 +9,8 @@
   <!-- Generador y Lector de Códigos QR -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- WebRTC PeerJS para Videoconferencia en Vivo Docente -> Estudiantes -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     body { font-family: 'Inter', sans-serif; }
@@ -1222,12 +1224,1152 @@
       }
     }
 
-    function stopActiveSpeechRecognition() {
-      if (activeSpeechRecognition) {
-        try { activeSpeechRecognition.stop(); } catch (e) {}
-        activeSpeechRecognition = null;
+    // ==================== SISTEMA DE VIDEOCONFERENCIA EN VIVO (DOCENTE -> ESTUDIANTES) + CHAT EN VIVO ====================
+    const liveState = {
+      courseId: null,
+      role: null, // 'teacher' | 'student'
+      isBroadcasting: false,
+      isWatching: false,
+      peer: null,
+      hostPeerId: '',
+      localStream: null,
+      screenStream: null,
+      activeStream: null,
+      remoteStream: null,
+      micEnabled: true,
+      camEnabled: true,
+      isScreenSharing: false,
+      sessionTitle: '',
+      startedAt: 0,
+      viewerConnections: new Map(), // peerId -> { conn, call, studentId, studentName, joinedAt }
+      studentDataConn: null,
+      studentMediaCall: null,
+      chatMessages: [],
+      remoteRoom: null,
+      pollTimer: null,
+      clockTimer: null,
+      audioCtx: null,
+      audioMeterFrame: null
+    };
+
+    function getLiveRoomKvKey(courseId) {
+      const cfg = getCloudConfig();
+      const space = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_default').replace(/[^a-zA-Z0-9_-]/g, '');
+      const cleanCourse = String(courseId || 'default').replace(/[^a-zA-Z0-9_-]/g, '');
+      return `puma_live_room_${space}_${cleanCourse}`;
+    }
+
+    function getLiveChatKvKey(courseId) {
+      const cfg = getCloudConfig();
+      const space = (cfg.gistId || DEFAULT_PUBLIC_GIST_ID || 'puma_default').replace(/[^a-zA-Z0-9_-]/g, '');
+      const cleanCourse = String(courseId || 'default').replace(/[^a-zA-Z0-9_-]/g, '');
+      return `puma_live_chat_${space}_${cleanCourse}`;
+    }
+
+    async function fetchLiveRoomCloud(courseId) {
+      try {
+        const key = getLiveRoomKvKey(courseId);
+        const res = await fetchWithTimeout(`${REALTIME_ATT_API}/${encodeURIComponent(key)}?_t=${Date.now()}`, {
+          headers: { Accept: 'application/json' }
+        }, 3000);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (e) {
+        return null;
       }
     }
+
+    async function pushLiveRoomCloud(courseId, roomPayload) {
+      try {
+        const key = getLiveRoomKvKey(courseId);
+        const res = await fetchWithTimeout(`${REALTIME_ATT_API}/${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(roomPayload)
+        }, 3000);
+        return res.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function fetchLiveChatCloud(courseId) {
+      try {
+        const key = getLiveChatKvKey(courseId);
+        const res = await fetchWithTimeout(`${REALTIME_ATT_API}/${encodeURIComponent(key)}?_t=${Date.now()}`, {
+          headers: { Accept: 'application/json' }
+        }, 3000);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return Array.isArray(data) ? data : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function pushLiveChatCloud(courseId, messages) {
+      try {
+        const key = getLiveChatKvKey(courseId);
+        const trimmed = (messages || []).slice(-120);
+        const res = await fetchWithTimeout(`${REALTIME_ATT_API}/${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(trimmed)
+        }, 3000);
+        return res.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function isRemoteRoomCurrentlyLive(room) {
+      if (!room || !room.active || !room.hostPeerId) return false;
+      const age = Date.now() - Number(room.heartbeatTs || room.startedAt || 0);
+      return age < 65000;
+    }
+
+    function mergeLiveChatList(existingList = [], incomingList = []) {
+      const map = new Map();
+      [...(existingList || []), ...(incomingList || [])].forEach(m => {
+        if (!m || !m.id) return;
+        map.set(m.id, m);
+      });
+      return Array.from(map.values())
+        .sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0))
+        .slice(-120);
+    }
+
+    function stopLiveAudioMeter() {
+      if (liveState.audioMeterFrame) {
+        cancelAnimationFrame(liveState.audioMeterFrame);
+        liveState.audioMeterFrame = null;
+      }
+      if (liveState.audioCtx) {
+        try { liveState.audioCtx.close(); } catch (e) {}
+        liveState.audioCtx = null;
+      }
+    }
+
+    function startTeacherAudioMeter(stream) {
+      stopLiveAudioMeter();
+      if (!stream || stream.getAudioTracks().length === 0) return;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        liveState.audioCtx = ctx;
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        src.connect(analyser);
+        const dataArr = new Uint8Array(analyser.frequencyBinCount);
+
+        const tick = () => {
+          const bar = document.getElementById('live-mic-level-bar');
+          if (!bar || !liveState.isBroadcasting) {
+            stopLiveAudioMeter();
+            return;
+          }
+          if (!liveState.micEnabled) {
+            bar.style.width = '0%';
+          } else {
+            analyser.getByteFrequencyData(dataArr);
+            let sum = 0;
+            for (let i = 0; i < dataArr.length; i++) sum += dataArr[i];
+            const avg = sum / dataArr.length;
+            const pct = Math.min(100, Math.round((avg / 140) * 100));
+            bar.style.width = `${pct}%`;
+          }
+          liveState.audioMeterFrame = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (e) {}
+    }
+
+    function formatLiveDuration(startedAt) {
+      if (!startedAt) return '00:00';
+      const secTotal = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      const h = Math.floor(secTotal / 3600);
+      const m = Math.floor((secTotal % 3600) / 60);
+      const s = secTotal % 60;
+      const pad = n => String(n).padStart(2, '0');
+      return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+    }
+
+    function stopLiveConferenceSession({ notifyCloud = false } = {}) {
+      const prevCourseId = liveState.courseId;
+      const wasTeacherLive = liveState.role === 'teacher' && liveState.isBroadcasting;
+
+      if (liveState.pollTimer) {
+        clearInterval(liveState.pollTimer);
+        liveState.pollTimer = null;
+      }
+      if (liveState.clockTimer) {
+        clearInterval(liveState.clockTimer);
+        liveState.clockTimer = null;
+      }
+      stopLiveAudioMeter();
+
+      if (wasTeacherLive) {
+        liveState.viewerConnections.forEach(entry => {
+          try { entry.conn?.send({ type: 'LIVE_ENDED' }); } catch (e) {}
+          try { entry.call?.close(); } catch (e) {}
+          try { entry.conn?.close(); } catch (e) {}
+        });
+      }
+      liveState.viewerConnections.clear();
+
+      if (liveState.studentMediaCall) {
+        try { liveState.studentMediaCall.close(); } catch (e) {}
+        liveState.studentMediaCall = null;
+      }
+      if (liveState.studentDataConn) {
+        try { liveState.studentDataConn.close(); } catch (e) {}
+        liveState.studentDataConn = null;
+      }
+      if (liveState.peer) {
+        try { liveState.peer.destroy(); } catch (e) {}
+        liveState.peer = null;
+      }
+      if (liveState.screenStream) {
+        liveState.screenStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+        liveState.screenStream = null;
+      }
+      if (liveState.localStream) {
+        liveState.localStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+        liveState.localStream = null;
+      }
+
+      liveState.activeStream = null;
+      liveState.remoteStream = null;
+      liveState.isBroadcasting = false;
+      liveState.isWatching = false;
+      liveState.isScreenSharing = false;
+      liveState.micEnabled = true;
+      liveState.camEnabled = true;
+      liveState.hostPeerId = '';
+      liveState.startedAt = 0;
+
+      if (notifyCloud && wasTeacherLive && prevCourseId) {
+        pushLiveRoomCloud(prevCourseId, {
+          active: false,
+          courseId: prevCourseId,
+          endedAt: Date.now(),
+          heartbeatTs: 0
+        });
+      }
+    }
+
+    function updateLiveViewersUi() {
+      const countEl = document.getElementById('live-viewers-count');
+      const listEl = document.getElementById('live-viewers-list');
+      const viewers = Array.from(liveState.viewerConnections.values());
+      const count = liveState.role === 'teacher'
+        ? viewers.length
+        : Number(liveState.remoteRoom?.viewersCount || (liveState.isWatching ? 1 : 0));
+
+      if (countEl) {
+        countEl.textContent = `${count} ${count === 1 ? 'estudiante conectado' : 'estudiantes conectados'}`;
+      }
+      if (listEl && liveState.role === 'teacher') {
+        if (viewers.length === 0) {
+          listEl.innerHTML = `<span class="text-[11px] text-slate-400 italic">Esperando que los estudiantes se unan a la transmisión...</span>`;
+        } else {
+          listEl.innerHTML = viewers
+            .map(v => `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-[11px] font-semibold">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>${esc(v.studentName)}
+            </span>`)
+            .join('');
+        }
+      }
+    }
+
+    function renderLiveChatMessagesOnly() {
+      const box = document.getElementById('live-chat-messages');
+      if (!box) return;
+      const myId = appState.session?.user?.id || '';
+      const msgs = liveState.chatMessages || [];
+
+      if (msgs.length === 0) {
+        box.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
+            <span class="text-3xl mb-2">💬</span>
+            <p class="text-xs font-semibold text-slate-500">El chat en vivo está listo</p>
+            <p class="text-[11px] mt-1">Los estudiantes pueden escribir dudas, levantar la mano o responder al maestro en tiempo real.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+      box.innerHTML = msgs
+        .map(m => {
+          if (m.kind === 'system') {
+            return `<div class="text-center my-1">
+              <span class="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-[10px] font-semibold">${esc(m.text)} · ${esc(m.time || '')}</span>
+            </div>`;
+          }
+          const isMine = m.senderId === myId;
+          const isTeacherMsg = m.role === 'admin';
+          const isAlert = m.kind === 'hand' || m.kind === 'question';
+          const bubbleStyle = isTeacherMsg
+            ? 'bg-indigo-600 text-white border border-indigo-700'
+            : isAlert
+            ? 'bg-amber-50 text-amber-950 border border-amber-300'
+            : isMine
+            ? 'bg-slate-900 text-white'
+            : 'bg-slate-100 text-slate-800 border border-slate-200';
+
+          return `<div class="flex flex-col ${isMine ? 'items-end' : 'items-start'}">
+            <div class="flex items-center gap-1.5 mb-0.5 px-1">
+              ${isTeacherMsg ? `<span class="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 text-[9px] font-extrabold uppercase">Docente</span>` : ''}
+              <span class="text-[10px] font-bold text-slate-600">${esc(m.senderName)}</span>
+              <span class="text-[10px] text-slate-400">${esc(m.time || '')}</span>
+            </div>
+            <div class="max-w-[88%] px-3 py-2 rounded-2xl text-xs leading-relaxed break-words shadow-2xs ${bubbleStyle}">
+              ${esc(m.text)}
+            </div>
+          </div>`;
+        })
+        .join('');
+
+      if (wasNearBottom) {
+        box.scrollTop = box.scrollHeight;
+      }
+    }
+
+    async function sendLiveChatMessage(courseId, text, kind = 'chat') {
+      const clean = String(text || '').trim();
+      if (!clean || !appState.session) return;
+
+      const msg = {
+        id: uid('lchat'),
+        senderId: appState.session.user.id,
+        senderName: appState.session.user.name,
+        role: appState.session.role,
+        kind,
+        text: clean,
+        time: getNowTimeShort(),
+        ts: Date.now()
+      };
+
+      liveState.chatMessages = mergeLiveChatList(liveState.chatMessages, [msg]);
+      renderLiveChatMessagesOnly();
+
+      // Envío instantáneo por canales P2P si existen
+      if (liveState.role === 'teacher') {
+        liveState.viewerConnections.forEach(entry => {
+          try { entry.conn?.send({ type: 'CHAT_MSG', message: msg }); } catch (e) {}
+        });
+      } else if (liveState.studentDataConn && liveState.studentDataConn.open) {
+        try { liveState.studentDataConn.send({ type: 'CHAT_MSG', message: msg }); } catch (e) {}
+      }
+
+      // Respaldo persistente en tiempo real en KVDB
+      const remoteChat = await fetchLiveChatCloud(courseId);
+      if (remoteChat) {
+        liveState.chatMessages = mergeLiveChatList(remoteChat, liveState.chatMessages);
+      }
+      await pushLiveChatCloud(courseId, liveState.chatMessages);
+      renderLiveChatMessagesOnly();
+    }
+
+    function startLivePolling(courseId, role) {
+      if (liveState.pollTimer) clearInterval(liveState.pollTimer);
+      liveState.pollTimer = setInterval(async () => {
+        if (document.hidden || appState.activeView !== 'course-detail' || appState.courseTab !== 'live') return;
+
+        // 1. Sincronizar mensajes de chat desde KVDB
+        const remoteChat = await fetchLiveChatCloud(courseId);
+        if (remoteChat) {
+          const prevLen = liveState.chatMessages.length;
+          const prevLast = liveState.chatMessages[prevLen - 1]?.id || '';
+          const merged = mergeLiveChatList(remoteChat, liveState.chatMessages);
+          const nextLast = merged[merged.length - 1]?.id || '';
+          if (merged.length !== prevLen || nextLast !== prevLast) {
+            liveState.chatMessages = merged;
+            renderLiveChatMessagesOnly();
+          }
+        }
+
+        // 2. Heartbeat del docente o detección en vivo del estudiante
+        if (role === 'teacher' && liveState.isBroadcasting && liveState.hostPeerId) {
+          const course = getCourseById(courseId);
+          await pushLiveRoomCloud(courseId, {
+            active: true,
+            hostPeerId: liveState.hostPeerId,
+            courseId,
+            courseTitle: course ? course.title : courseId,
+            teacherName: appState.session.user.name,
+            title: liveState.sessionTitle || (course ? course.title : 'Clase en Vivo'),
+            startedAt: liveState.startedAt,
+            startedTime: getNowTimeShort(),
+            heartbeatTs: Date.now(),
+            screenSharing: liveState.isScreenSharing,
+            viewersCount: liveState.viewerConnections.size
+          });
+        } else if (role === 'student') {
+          const room = await fetchLiveRoomCloud(courseId);
+          const prevHost = liveState.remoteRoom?.hostPeerId || '';
+          const prevLive = isRemoteRoomCurrentlyLive(liveState.remoteRoom);
+          liveState.remoteRoom = room;
+          const nowLive = isRemoteRoomCurrentlyLive(room);
+          updateLiveViewersUi();
+
+          const statusBanner = document.getElementById('student-live-status-text');
+          const connectBtn = document.getElementById('btn-student-join-live');
+          if (nowLive) {
+            if (statusBanner && !liveState.isWatching) {
+              statusBanner.innerHTML = `<span class="text-emerald-400 font-bold">🔴 ¡El docente está transmitiendo en vivo!</span> · "${esc(room.title || 'Clase en Vivo')}"`;
+            }
+            if (connectBtn) {
+              connectBtn.disabled = false;
+              connectBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            // Si el docente reinició transmisión con nuevo hostPeerId mientras el alumno veía, reconectar
+            if (liveState.isWatching && room.hostPeerId !== prevHost) {
+              const c = getCourseById(courseId);
+              if (c) connectStudentToLiveBroadcast(c, room);
+            }
+          } else {
+            if (prevLive && liveState.isWatching) {
+              handleStudentStreamEnded('El docente ha finalizado la clase en vivo.');
+            } else if (statusBanner && !liveState.isWatching) {
+              statusBanner.textContent = 'Esperando a que el docente inicie la transmisión en vivo...';
+            }
+          }
+        }
+      }, 2500);
+    }
+
+    async function replaceBroadcastVideoTrack(newTrack) {
+      if (!newTrack) return;
+      liveState.viewerConnections.forEach(entry => {
+        try {
+          const pc = entry.call && entry.call.peerConnection;
+          if (!pc) return;
+          const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(newTrack);
+          }
+        } catch (e) {}
+      });
+    }
+
+    async function startTeacherLiveBroadcast(course) {
+      if (typeof window.Peer === 'undefined') {
+        showToast('No se cargó el motor de videoconferencia (PeerJS). Verifica tu conexión.', 'error');
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('Tu navegador no permite acceso a cámara/micrófono en este entorno.', 'error');
+        return;
+      }
+
+      const titleInput = document.getElementById('inp-live-session-title');
+      const sessionTitle = (titleInput ? titleInput.value.trim() : '') || `Clase en Vivo · ${course.title}`;
+
+      let stream = null;
+      let hasVideo = true;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+      } catch (err) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+          hasVideo = false;
+          showToast('Cámara no detectada: transmitiendo solo audio (puedes compartir pantalla).', 'info');
+        } catch (err2) {
+          showToast('Permiso denegado o sin micrófono/cámara disponible.', 'error');
+          return;
+        }
+      }
+
+      stopLiveConferenceSession({ notifyCloud: false });
+      liveState.courseId = course.id;
+      liveState.role = 'teacher';
+      liveState.localStream = stream;
+      liveState.activeStream = stream;
+      liveState.camEnabled = hasVideo;
+      liveState.micEnabled = true;
+      liveState.isScreenSharing = false;
+      liveState.sessionTitle = sessionTitle;
+      liveState.startedAt = Date.now();
+      liveState.isBroadcasting = true;
+
+      const cleanId = String(course.id || 'c').replace(/[^a-zA-Z0-9]/g, '').slice(0, 14);
+      const desiredPeerId = `pumasteam-${cleanId}-${Date.now().toString(36)}`;
+
+      const peer = new window.Peer(desiredPeerId, {
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      });
+      liveState.peer = peer;
+
+      const tabPanel = document.getElementById('course-tab-panel');
+      if (tabPanel) renderCourseLiveConferenceTab(tabPanel, course);
+
+      const videoEl = document.getElementById('live-video-player');
+      if (videoEl) {
+        videoEl.srcObject = stream;
+        videoEl.muted = true;
+        videoEl.play().catch(() => {});
+      }
+      startTeacherAudioMeter(stream);
+
+      peer.on('open', async peerId => {
+        liveState.hostPeerId = peerId;
+        await pushLiveRoomCloud(course.id, {
+          active: true,
+          hostPeerId: peerId,
+          courseId: course.id,
+          courseTitle: course.title,
+          teacherName: appState.session.user.name,
+          title: sessionTitle,
+          startedAt: liveState.startedAt,
+          startedTime: getNowTimeShort(),
+          heartbeatTs: Date.now(),
+          screenSharing: false,
+          viewersCount: 0
+        });
+        await sendLiveChatMessage(course.id, `🔴 El docente inició la videoconferencia: "${sessionTitle}"`, 'system');
+        showToast('Transmisión en vivo iniciada. Los estudiantes ya pueden conectarse.', 'success');
+      });
+
+      peer.on('connection', conn => {
+        const meta = conn.metadata || {};
+        const entry = {
+          conn,
+          call: null,
+          studentId: meta.studentId || conn.peer,
+          studentName: meta.studentName || 'Estudiante',
+          joinedAt: getNowTimeShort()
+        };
+        liveState.viewerConnections.set(conn.peer, entry);
+        updateLiveViewersUi();
+
+        const sendStreamToViewer = () => {
+          if (!liveState.activeStream || !liveState.peer || liveState.peer.destroyed) return;
+          try {
+            if (entry.call) {
+              try { entry.call.close(); } catch (e) {}
+            }
+            entry.call = liveState.peer.call(conn.peer, liveState.activeStream);
+          } catch (e) {}
+        };
+
+        conn.on('open', () => {
+          sendStreamToViewer();
+          try {
+            conn.send({ type: 'CHAT_SYNC', messages: liveState.chatMessages.slice(-80) });
+          } catch (e) {}
+        });
+
+        conn.on('data', async data => {
+          if (!data || typeof data !== 'object') return;
+          if (data.type === 'REQUEST_STREAM') {
+            if (data.studentName) entry.studentName = data.studentName;
+            updateLiveViewersUi();
+            sendStreamToViewer();
+          } else if (data.type === 'CHAT_MSG' && data.message) {
+            liveState.chatMessages = mergeLiveChatList(liveState.chatMessages, [data.message]);
+            renderLiveChatMessagesOnly();
+            // Retransmitir al resto de estudiantes conectados
+            liveState.viewerConnections.forEach((other, otherId) => {
+              if (otherId !== conn.peer) {
+                try { other.conn?.send({ type: 'CHAT_MSG', message: data.message }); } catch (e) {}
+              }
+            });
+            pushLiveChatCloud(course.id, liveState.chatMessages);
+          }
+        });
+
+        conn.on('close', () => {
+          try { entry.call?.close(); } catch (e) {}
+          liveState.viewerConnections.delete(conn.peer);
+          updateLiveViewersUi();
+        });
+
+        conn.on('error', () => {
+          liveState.viewerConnections.delete(conn.peer);
+          updateLiveViewersUi();
+        });
+      });
+
+      peer.on('error', err => {
+        showToast(`Aviso de conexión de video (${err?.type || 'red'}). El chat en vivo sigue activo.`, 'info');
+      });
+
+      startLivePolling(course.id, 'teacher');
+      if (liveState.clockTimer) clearInterval(liveState.clockTimer);
+      liveState.clockTimer = setInterval(() => {
+        const el = document.getElementById('live-duration-clock');
+        if (el && liveState.isBroadcasting) {
+          el.textContent = formatLiveDuration(liveState.startedAt);
+        }
+      }, 1000);
+    }
+
+    async function toggleTeacherScreenShare(course) {
+      if (!liveState.isBroadcasting || !liveState.localStream) return;
+      const videoEl = document.getElementById('live-video-player');
+
+      if (liveState.isScreenSharing) {
+        if (liveState.screenStream) {
+          liveState.screenStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+          liveState.screenStream = null;
+        }
+        liveState.isScreenSharing = false;
+        liveState.activeStream = liveState.localStream;
+        const camTrack = liveState.localStream.getVideoTracks()[0];
+        if (camTrack) await replaceBroadcastVideoTrack(camTrack);
+        if (videoEl) {
+          videoEl.srcObject = liveState.localStream;
+          videoEl.play().catch(() => {});
+        }
+        const btn = document.getElementById('btn-live-toggle-screen');
+        if (btn) {
+          btn.textContent = '🖥️ Compartir Pantalla';
+          btn.className = 'px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer';
+        }
+        showToast('Volviste a transmitir tu cámara', 'info');
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        showToast('Tu navegador no soporta compartir pantalla.', 'error');
+        return;
+      }
+
+      try {
+        const scrStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const scrTrack = scrStream.getVideoTracks()[0];
+        liveState.screenStream = scrStream;
+        liveState.isScreenSharing = true;
+
+        const combined = new MediaStream([
+          scrTrack,
+          ...liveState.localStream.getAudioTracks()
+        ]);
+        liveState.activeStream = combined;
+        await replaceBroadcastVideoTrack(scrTrack);
+
+        if (videoEl) {
+          videoEl.srcObject = combined;
+          videoEl.play().catch(() => {});
+        }
+
+        const btn = document.getElementById('btn-live-toggle-screen');
+        if (btn) {
+          btn.textContent = '🛑 Dejar de Compartir';
+          btn.className = 'px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer';
+        }
+        showToast('Compartiendo pantalla con todos los estudiantes', 'success');
+
+        scrTrack.onended = () => {
+          if (liveState.isScreenSharing) toggleTeacherScreenShare(course);
+        };
+      } catch (e) {
+        showToast('Compartir pantalla cancelado', 'info');
+      }
+    }
+
+    function handleStudentStreamEnded(reasonMsg) {
+      if (liveState.studentMediaCall) {
+        try { liveState.studentMediaCall.close(); } catch (e) {}
+        liveState.studentMediaCall = null;
+      }
+      if (liveState.studentDataConn) {
+        try { liveState.studentDataConn.close(); } catch (e) {}
+        liveState.studentDataConn = null;
+      }
+      liveState.remoteStream = null;
+      liveState.isWatching = false;
+      const videoEl = document.getElementById('live-video-player');
+      if (videoEl) videoEl.srcObject = null;
+      const overlay = document.getElementById('student-video-overlay');
+      if (overlay) overlay.classList.remove('hidden');
+      const statusText = document.getElementById('student-live-status-text');
+      if (statusText) statusText.textContent = reasonMsg || 'Transmisión finalizada.';
+      showToast(reasonMsg || 'La clase en vivo ha finalizado', 'info');
+    }
+
+    async function connectStudentToLiveBroadcast(course, roomState) {
+      if (typeof window.Peer === 'undefined') {
+        showToast('No se cargó el motor de video en vivo (PeerJS).', 'error');
+        return;
+      }
+      const room = roomState || (await fetchLiveRoomCloud(course.id));
+      liveState.remoteRoom = room;
+      if (!isRemoteRoomCurrentlyLive(room)) {
+        showToast('El docente aún no ha iniciado la transmisión en vivo.', 'info');
+        return;
+      }
+
+      if (liveState.studentMediaCall) {
+        try { liveState.studentMediaCall.close(); } catch (e) {}
+      }
+      if (liveState.studentDataConn) {
+        try { liveState.studentDataConn.close(); } catch (e) {}
+      }
+      if (liveState.peer) {
+        try { liveState.peer.destroy(); } catch (e) {}
+      }
+
+      const statusText = document.getElementById('student-live-status-text');
+      if (statusText) statusText.textContent = 'Conectando audio y video con el docente...';
+
+      const peer = new window.Peer(undefined, {
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
+      });
+      liveState.peer = peer;
+      liveState.courseId = course.id;
+      liveState.role = 'student';
+      liveState.isWatching = true;
+
+      peer.on('call', incomingCall => {
+        liveState.studentMediaCall = incomingCall;
+        // El estudiante responde sin enviar cámara/micrófono (solo recibe audio y video del docente)
+        incomingCall.answer();
+        incomingCall.on('stream', remoteStream => {
+          liveState.remoteStream = remoteStream;
+          const videoEl = document.getElementById('live-video-player');
+          const overlay = document.getElementById('student-video-overlay');
+          const unmuteOverlay = document.getElementById('student-unmute-overlay');
+          if (overlay) overlay.classList.add('hidden');
+          if (videoEl) {
+            videoEl.srcObject = remoteStream;
+            videoEl.muted = false;
+            videoEl.play().then(() => {
+              if (unmuteOverlay) unmuteOverlay.classList.add('hidden');
+            }).catch(() => {
+              // Si el navegador bloquea autoplay con audio, reproducir en silencio y mostrar botón de activar audio
+              videoEl.muted = true;
+              videoEl.play().catch(() => {});
+              if (unmuteOverlay) unmuteOverlay.classList.remove('hidden');
+            });
+          }
+          const badge = document.getElementById('live-connection-badge');
+          if (badge) {
+            badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500 pulse-dot inline-block mr-1.5"></span>EN VIVO · Audio y Video Activos`;
+          }
+          showToast('Conectado a la clase en vivo del docente', 'success');
+        });
+
+        incomingCall.on('close', () => {
+          handleStudentStreamEnded('Se cerró la señal de video del docente.');
+        });
+      });
+
+      peer.on('open', () => {
+        const conn = peer.connect(room.hostPeerId, {
+          reliable: true,
+          metadata: {
+            studentId: appState.session.user.id,
+            studentName: appState.session.user.name
+          }
+        });
+        liveState.studentDataConn = conn;
+
+        conn.on('open', () => {
+          conn.send({
+            type: 'REQUEST_STREAM',
+            studentId: appState.session.user.id,
+            studentName: appState.session.user.name
+          });
+        });
+
+        conn.on('data', data => {
+          if (!data || typeof data !== 'object') return;
+          if (data.type === 'CHAT_SYNC' && Array.isArray(data.messages)) {
+            liveState.chatMessages = mergeLiveChatList(liveState.chatMessages, data.messages);
+            renderLiveChatMessagesOnly();
+          } else if (data.type === 'CHAT_MSG' && data.message) {
+            liveState.chatMessages = mergeLiveChatList(liveState.chatMessages, [data.message]);
+            renderLiveChatMessagesOnly();
+          } else if (data.type === 'LIVE_ENDED') {
+            handleStudentStreamEnded('El docente ha finalizado la videoconferencia.');
+          }
+        });
+
+        conn.on('error', () => {
+          if (statusText && !liveState.remoteStream) {
+            statusText.textContent = 'No se pudo conectar directo al video. Pulsa "Reconectar" o usa el chat en vivo.';
+          }
+        });
+      });
+
+      peer.on('error', () => {
+        if (statusText && !liveState.remoteStream) {
+          statusText.textContent = 'Esperando señal del docente... Pulsa "Conectar a Clase en Vivo" para reintentar.';
+        }
+      });
+    }
+
+    function renderCourseLiveConferenceTab(tabPanel, course) {
+      const isAdmin = appState.session.role === 'admin';
+      const sameCourseLive = liveState.courseId === course.id;
+      if (!sameCourseLive) {
+        stopLiveConferenceSession({ notifyCloud: true });
+        liveState.courseId = course.id;
+        liveState.role = isAdmin ? 'teacher' : 'student';
+        liveState.chatMessages = [];
+        liveState.remoteRoom = null;
+      }
+
+      const isTeacherLiveNow = isAdmin && liveState.isBroadcasting && liveState.courseId === course.id;
+
+      tabPanel.innerHTML = `
+        <div class="grid lg:grid-cols-12 gap-5 items-start">
+          <!-- Escenario Principal de Video y Audio (8 columnas) -->
+          <div class="lg:col-span-8 bg-slate-950 rounded-3xl overflow-hidden shadow-xl border border-slate-800 flex flex-col">
+            <!-- Barra Superior del Estudio -->
+            <div class="px-4 py-3 bg-slate-900/95 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-white">
+              <div class="flex items-center gap-2.5">
+                <span id="live-connection-badge" class="px-2.5 py-1 rounded-full text-[11px] font-extrabold ${
+                  isTeacherLiveNow ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-300'
+                }">
+                  ${
+                    isTeacherLiveNow
+                      ? `<span class="w-2 h-2 rounded-full bg-white pulse-dot inline-block mr-1.5"></span>EN VIVO`
+                      : isAdmin
+                      ? '⚪ Estudio Listo'
+                      : '📡 Sala de Clase en Vivo'
+                  }
+                </span>
+                <span class="text-xs font-bold text-slate-200 truncate max-w-[220px] sm:max-w-xs">${esc(liveState.sessionTitle || course.title)}</span>
+              </div>
+              <div class="flex items-center gap-3 text-[11px] text-slate-300 font-semibold">
+                ${isTeacherLiveNow ? `<span id="live-duration-clock" class="font-mono text-amber-300 font-bold">${esc(formatLiveDuration(liveState.startedAt))}</span>` : ''}
+                <span id="live-viewers-count" class="px-2.5 py-0.5 rounded-full bg-slate-800 text-emerald-300">0 estudiantes conectados</span>
+              </div>
+            </div>
+
+            <!-- Reproductor de Video -->
+            <div class="relative aspect-video bg-slate-900 flex items-center justify-center overflow-hidden">
+              <video id="live-video-player" autoplay playsinline ${isAdmin ? 'muted' : ''} class="w-full h-full object-cover"></video>
+
+              ${
+                isAdmin && !isTeacherLiveNow
+                  ? `<div id="teacher-prelive-overlay" class="absolute inset-0 bg-gradient-to-br from-slate-950/95 via-indigo-950/90 to-slate-900/95 flex flex-col items-center justify-center p-6 text-center text-white">
+                      <div class="w-16 h-16 rounded-2xl bg-rose-600/20 border border-rose-500/40 flex items-center justify-center text-3xl mb-3">🎥</div>
+                      <h3 class="text-lg sm:text-xl font-extrabold">Transmisión en Vivo para ${esc(course.title)}</h3>
+                      <p class="text-xs text-slate-300 max-w-md mt-1.5 leading-relaxed">
+                        Solo tú transmites <strong>audio, cámara y pantalla</strong>. Tus estudiantes recibirán la señal en tiempo real y podrán participar mediante el <strong>Chat en Vivo</strong>.
+                      </p>
+                      <div class="w-full max-w-sm mt-4 space-y-2.5">
+                        <input id="inp-live-session-title" type="text" value="${esc('Clase en Vivo · ' + course.title)}" placeholder="Tema de la videoconferencia..." class="w-full px-3.5 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                        <button type="button" id="btn-start-teacher-live" class="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-rose-900/40 cursor-pointer transition">
+                          🔴 Iniciar Videoconferencia (Cámara + Micrófono)
+                        </button>
+                      </div>
+                    </div>`
+                  : ''
+              }
+
+              ${
+                !isAdmin
+                  ? `<div id="student-video-overlay" class="${liveState.isWatching && liveState.remoteStream ? 'hidden' : ''} absolute inset-0 bg-gradient-to-br from-slate-950/95 via-slate-900/90 to-indigo-950/95 flex flex-col items-center justify-center p-6 text-center text-white">
+                      <div class="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-3xl mb-3">📡</div>
+                      <h3 class="text-lg font-extrabold">Clase en Vivo · ${esc(course.title)}</h3>
+                      <p id="student-live-status-text" class="text-xs text-slate-300 max-w-md mt-1.5">Verificando si el docente está transmitiendo en este momento...</p>
+                      <button type="button" id="btn-student-join-live" class="mt-4 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-lg cursor-pointer transition">
+                        ▶ Conectar a Video y Audio del Docente
+                      </button>
+                    </div>
+                    <div id="student-unmute-overlay" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                      <button type="button" id="btn-student-unmute" class="px-4 py-2 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-xl cursor-pointer">
+                        🔊 Toca aquí para activar el audio del maestro
+                      </button>
+                    </div>`
+                  : ''
+              }
+            </div>
+
+            <!-- Barra de Controles de Estudio / Visor -->
+            ${
+              isAdmin
+                ? `<div class="p-4 bg-slate-900 border-t border-slate-800 space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" id="btn-live-toggle-mic" ${!isTeacherLiveNow ? 'disabled' : ''} class="px-3.5 py-2 rounded-xl ${liveState.micEnabled ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-600 hover:bg-rose-500'} text-white text-xs font-bold cursor-pointer disabled:opacity-40">
+                          ${liveState.micEnabled ? '🎙️ Micrófono Activo' : '🔇 Micrófono Silenciado'}
+                        </button>
+                        <button type="button" id="btn-live-toggle-cam" ${!isTeacherLiveNow ? 'disabled' : ''} class="px-3.5 py-2 rounded-xl ${liveState.camEnabled ? 'bg-slate-800 hover:bg-slate-700' : 'bg-rose-600 hover:bg-rose-500'} text-white text-xs font-bold cursor-pointer disabled:opacity-40">
+                          ${liveState.camEnabled ? '📹 Cámara Activa' : '🚫 Cámara Apagada'}
+                        </button>
+                        <button type="button" id="btn-live-toggle-screen" ${!isTeacherLiveNow ? 'disabled' : ''} class="px-3.5 py-2 rounded-xl ${liveState.isScreenSharing ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-slate-800 hover:bg-slate-700'} text-white text-xs font-bold cursor-pointer disabled:opacity-40">
+                          ${liveState.isScreenSharing ? '🛑 Dejar de Compartir' : '🖥️ Compartir Pantalla'}
+                        </button>
+                      </div>
+                      ${
+                        isTeacherLiveNow
+                          ? `<button type="button" id="btn-stop-teacher-live" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold cursor-pointer">
+                              ⏹ Finalizar Clase en Vivo
+                            </button>`
+                          : ''
+                      }
+                    </div>
+
+                    ${
+                      isTeacherLiveNow
+                        ? `<div class="flex items-center gap-2.5 text-[11px] text-slate-400">
+                            <span>Nivel de voz:</span>
+                            <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden max-w-xs">
+                              <div id="live-mic-level-bar" class="h-full bg-emerald-400 transition-all duration-75" style="width: 0%"></div>
+                            </div>
+                          </div>
+                          <div class="pt-2 border-t border-slate-800">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Estudiantes conectados viendo tu clase:</p>
+                            <div id="live-viewers-list" class="flex flex-wrap gap-1.5"></div>
+                          </div>`
+                        : ''
+                    }
+                  </div>`
+                : `<div class="p-3.5 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <button type="button" id="btn-stu-toggle-mute" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold cursor-pointer">🔊 Audio / Silenciar</button>
+                      <button type="button" id="btn-stu-reconnect" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">🔄 Reconectar Señal</button>
+                      <button type="button" id="btn-stu-fullscreen" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold cursor-pointer">⛶ Pantalla Completa</button>
+                    </div>
+                    <span class="text-[11px] text-slate-400">Modo Estudiante: Escucha y participa por chat</span>
+                  </div>`
+            }
+          </div>
+
+          <!-- Panel de Chat en Vivo (4 columnas) -->
+          <div class="lg:col-span-4 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[520px] lg:h-[580px] overflow-hidden">
+            <div class="px-4 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+              <div>
+                <h3 class="font-extrabold text-xs sm:text-sm flex items-center gap-1.5">💬 Chat en Vivo de la Clase</h3>
+                <p class="text-[10px] text-slate-300">Interacción en tiempo real · Hermosillo, Son.</p>
+              </div>
+              ${
+                isAdmin
+                  ? `<button type="button" id="btn-clear-live-chat" class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-rose-600 text-[11px] font-bold cursor-pointer">Limpiar</button>`
+                  : `<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">En línea</span>`
+              }
+            </div>
+
+            <!-- Lista de mensajes -->
+            <div id="live-chat-messages" class="flex-1 overflow-y-auto p-3.5 space-y-2.5 bg-slate-50/60"></div>
+
+            <!-- Botones rápidos de interacción para estudiantes -->
+            ${
+              !isAdmin
+                ? `<div class="px-3 py-2 bg-white border-t border-slate-100 flex flex-wrap gap-1.5">
+                    <button type="button" data-quick-react="hand" class="px-2.5 py-1 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold cursor-pointer">✋ Levantar mano</button>
+                    <button type="button" data-quick-react="question" class="px-2.5 py-1 rounded-full bg-rose-100 hover:bg-rose-200 text-rose-800 text-[11px] font-bold cursor-pointer">❓ Tengo duda</button>
+                    <button type="button" data-quick-react="ok" class="px-2.5 py-1 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-bold cursor-pointer">👍 Entendido</button>
+                  </div>`
+                : ''
+            }
+
+            <!-- Formulario de envío de mensaje -->
+            <form id="form-live-chat" class="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+              <input id="inp-live-chat-msg" type="text" autocomplete="off" required placeholder="${isAdmin ? 'Escribe un mensaje o indicación al grupo...' : 'Escribe tu pregunta o comentario al docente...'}" class="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold cursor-pointer shrink-0">Enviar</button>
+            </form>
+          </div>
+        </div>
+      `;
+
+      // Reconectar el flujo al elemento <video> si ya existía una transmisión activa en esta materia
+      const videoEl = document.getElementById('live-video-player');
+      if (isAdmin && isTeacherLiveNow && liveState.activeStream && videoEl) {
+        videoEl.srcObject = liveState.activeStream;
+        videoEl.muted = true;
+        videoEl.play().catch(() => {});
+        startTeacherAudioMeter(liveState.localStream);
+      } else if (!isAdmin && liveState.isWatching && liveState.remoteStream && videoEl) {
+        videoEl.srcObject = liveState.remoteStream;
+        videoEl.play().catch(() => {});
+      }
+
+      updateLiveViewersUi();
+      renderLiveChatMessagesOnly();
+
+      // Cargar historial de chat y estado de sala inmediatamente
+      (async () => {
+        const [remoteChat, remoteRoom] = await Promise.all([
+          fetchLiveChatCloud(course.id),
+          fetchLiveRoomCloud(course.id)
+        ]);
+        if (remoteChat) {
+          liveState.chatMessages = mergeLiveChatList(remoteChat, liveState.chatMessages);
+          renderLiveChatMessagesOnly();
+        }
+        liveState.remoteRoom = remoteRoom;
+        updateLiveViewersUi();
+        if (!isAdmin) {
+          const stText = document.getElementById('student-live-status-text');
+          if (stText) {
+            if (isRemoteRoomCurrentlyLive(remoteRoom)) {
+              stText.innerHTML = `<span class="text-emerald-400 font-bold">🔴 ¡El docente está transmitiendo en vivo!</span> · "${esc(remoteRoom.title || course.title)}"`;
+            } else {
+              stText.textContent = 'Aún no inicia la transmisión. Quédate aquí o escribe en el chat en vivo; se detectará automáticamente cuando el maestro inicie.';
+            }
+          }
+          startLivePolling(course.id, 'student');
+        } else if (!liveState.pollTimer) {
+          startLivePolling(course.id, 'teacher');
+        }
+      })();
+
+      // Eventos de Docente
+      const startBtn = document.getElementById('btn-start-teacher-live');
+      if (startBtn) {
+        startBtn.addEventListener('click', () => startTeacherLiveBroadcast(course));
+      }
+
+      const stopBtn = document.getElementById('btn-stop-teacher-live');
+      if (stopBtn) {
+        stopBtn.addEventListener('click', () => {
+          openConfirmModal(
+            'Finalizar Videoconferencia',
+            '¿Deseas terminar la transmisión en vivo para todos los estudiantes de esta materia?',
+            async () => {
+              await sendLiveChatMessage(course.id, '⏹ El docente ha finalizado la clase en vivo.', 'system');
+              stopLiveConferenceSession({ notifyCloud: true });
+              renderCourseLiveConferenceTab(tabPanel, course);
+              showToast('Videoconferencia finalizada', 'info');
+            }
+          );
+        });
+      }
+
+      const micBtn = document.getElementById('btn-live-toggle-mic');
+      if (micBtn) {
+        micBtn.addEventListener('click', () => {
+          if (!liveState.localStream) return;
+          liveState.micEnabled = !liveState.micEnabled;
+          liveState.localStream.getAudioTracks().forEach(t => { t.enabled = liveState.micEnabled; });
+          micBtn.textContent = liveState.micEnabled ? '🎙️ Micrófono Activo' : '🔇 Micrófono Silenciado';
+          micBtn.className = `px-3.5 py-2 rounded-xl ${liveState.micEnabled ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-600 hover:bg-rose-500'} text-white text-xs font-bold cursor-pointer`;
+        });
+      }
+
+      const camBtn = document.getElementById('btn-live-toggle-cam');
+      if (camBtn) {
+        camBtn.addEventListener('click', () => {
+          if (!liveState.localStream) return;
+          const vTracks = liveState.localStream.getVideoTracks();
+          if (vTracks.length === 0) {
+            showToast('No hay cámara activa en este dispositivo', 'info');
+            return;
+          }
+          liveState.camEnabled = !liveState.camEnabled;
+          vTracks.forEach(t => { t.enabled = liveState.camEnabled; });
+          camBtn.textContent = liveState.camEnabled ? '📹 Cámara Activa' : '🚫 Cámara Apagada';
+          camBtn.className = `px-3.5 py-2 rounded-xl ${liveState.camEnabled ? 'bg-slate-800 hover:bg-slate-700' : 'bg-rose-600 hover:bg-rose-500'} text-white text-xs font-bold cursor-pointer`;
+        });
+      }
+
+      const screenBtn = document.getElementById('btn-live-toggle-screen');
+      if (screenBtn) {
+        screenBtn.addEventListener('click', () => toggleTeacherScreenShare(course));
+      }
+
+      // Eventos de Estudiante
+      const joinBtn = document.getElementById('btn-student-join-live');
+      if (joinBtn) {
+        joinBtn.addEventListener('click', () => connectStudentToLiveBroadcast(course, liveState.remoteRoom));
+      }
+
+      const unmuteBtn = document.getElementById('btn-student-unmute');
+      if (unmuteBtn) {
+        unmuteBtn.addEventListener('click', () => {
+          const v = document.getElementById('live-video-player');
+          if (v) {
+            v.muted = false;
+            v.play().catch(() => {});
+          }
+          document.getElementById('student-unmute-overlay')?.classList.add('hidden');
+        });
+      }
+
+      const stuMuteBtn = document.getElementById('btn-stu-toggle-mute');
+      if (stuMuteBtn) {
+        stuMuteBtn.addEventListener('click', () => {
+          const v = document.getElementById('live-video-player');
+          if (!v) return;
+          v.muted = !v.muted;
+          stuMuteBtn.textContent = v.muted ? '🔇 Silenciado (Activar)' : '🔊 Audio Activo';
+        });
+      }
+
+      const stuReconnectBtn = document.getElementById('btn-stu-reconnect');
+      if (stuReconnectBtn) {
+        stuReconnectBtn.addEventListener('click', () => connectStudentToLiveBroadcast(course, null));
+      }
+
+      const stuFsBtn = document.getElementById('btn-stu-fullscreen');
+      if (stuFsBtn) {
+        stuFsBtn.addEventListener('click', () => {
+          const v = document.getElementById('live-video-player');
+          if (v && v.requestFullscreen) v.requestFullscreen().catch(() => {});
+        });
+      }
+
+      // Eventos de Chat en Vivo
+      const chatForm = document.getElementById('form-live-chat');
+      const chatInput = document.getElementById('inp-live-chat-msg');
+      if (chatForm && chatInput) {
+        chatForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const txt = chatInput.value.trim();
+          if (!txt) return;
+          chatInput.value = '';
+          const kind = txt.startsWith('❓') || txt.toLowerCase().includes('duda') ? 'question' : 'chat';
+          await sendLiveChatMessage(course.id, txt, kind);
+        });
+      }
+
+      tabPanel.querySelectorAll('[data-quick-react]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const type = btn.getAttribute('data-quick-react');
+          if (type === 'hand') {
+            await sendLiveChatMessage(course.id, '✋ Levantó la mano para participar', 'hand');
+          } else if (type === 'ok') {
+            await sendLiveChatMessage(course.id, '👍 ¡Todo claro y entendido!', 'chat');
+          } else if (type === 'question' && chatInput) {
+            chatInput.value = '❓ Duda: ';
+            chatInput.focus();
+          }
+        });
+      });
+
+      const clearChatBtn = document.getElementById('btn-clear-live-chat');
+      if (clearChatBtn) {
+        clearChatBtn.addEventListener('click', () => {
+          openConfirmModal('Limpiar Chat en Vivo', '¿Deseas vaciar los mensajes del chat en vivo de esta materia?', async () => {
+            liveState.chatMessages = [];
+            renderLiveChatMessagesOnly();
+            await pushLiveChatCloud(course.id, []);
+            showToast('Chat en vivo limpiado', 'info');
+          });
+        });
+      }
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (liveState.isBroadcasting || liveState.isWatching) {
+        stopLiveConferenceSession({ notifyCloud: liveState.role === 'teacher' });
+      }
+    });
 
     function openModal(title, htmlContent, onMount, maxWidthClass = 'max-w-lg') {
       stopActiveQrScanner();
@@ -2593,15 +3735,18 @@ ${text}
               <div class="flex flex-wrap gap-2">
                 ${
                   isAdmin
-                    ? `<button id="btn-take-qr-att" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer">📷 Pase de Lista QR (${esc(getTodayFormatted())})</button>
+                    ? `<button id="btn-open-live-class" class="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-md cursor-pointer">🎥 Clase en Vivo</button>
+                       <button id="btn-take-qr-att" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer">📷 Pase de Lista QR (${esc(getTodayFormatted())})</button>
                        <button id="btn-delete-this-course" class="px-3.5 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-xs cursor-pointer">🗑 Eliminar Materia</button>`
-                    : `<button id="btn-stu-scan-qr" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer">📷 Escanear QR de Asistencia</button>`
+                    : `<button id="btn-open-live-class" class="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-md cursor-pointer">🎥 Entrar a Clase en Vivo</button>
+                       <button id="btn-stu-scan-qr" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer">📷 Escanear QR de Asistencia</button>`
                 }
               </div>
             </div>
 
             <div class="flex flex-wrap gap-2 mt-6 pt-4 border-t border-white/20">
               <button data-course-tab="content" class="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${appState.courseTab === 'content' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📚 Secuencias (${(course.modules || []).length})</button>
+              <button data-course-tab="live" class="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${appState.courseTab === 'live' ? 'bg-white text-rose-700 shadow-xs' : 'bg-rose-500/80 text-white hover:bg-rose-500'}">🎥 Videoconferencia en Vivo</button>
               <button data-course-tab="gradebook" class="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${appState.courseTab === 'gradebook' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📊 Libro de Calificaciones (100 pts)</button>
               <button data-course-tab="attendance" class="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer ${appState.courseTab === 'attendance' ? 'bg-white text-slate-900 shadow-xs' : 'bg-white/10 text-white hover:bg-white/20'}">📋 Libro de Asistencia</button>
             </div>
@@ -2612,9 +3757,20 @@ ${text}
       `;
 
       document.getElementById('btn-back-courses').addEventListener('click', () => {
+        if (liveState.isBroadcasting || liveState.isWatching) {
+          stopLiveConferenceSession({ notifyCloud: isAdmin });
+        }
         appState.activeView = 'courses';
         renderMain();
       });
+
+      const liveHeadBtn = document.getElementById('btn-open-live-class');
+      if (liveHeadBtn) {
+        liveHeadBtn.addEventListener('click', () => {
+          appState.courseTab = 'live';
+          renderCourseDetail();
+        });
+      }
 
       const qrBtn = document.getElementById('btn-take-qr-att');
       if (qrBtn) qrBtn.addEventListener('click', () => openTeacherQrModal(course.id));
@@ -2645,7 +3801,11 @@ ${text}
 
       container.querySelectorAll('[data-course-tab]').forEach(btn => {
         btn.addEventListener('click', () => {
-          appState.courseTab = btn.getAttribute('data-course-tab');
+          const nextTab = btn.getAttribute('data-course-tab');
+          if (appState.courseTab === 'live' && nextTab !== 'live' && (liveState.isBroadcasting || liveState.isWatching)) {
+            stopLiveConferenceSession({ notifyCloud: isAdmin });
+          }
+          appState.courseTab = nextTab;
           renderCourseDetail();
         });
       });
@@ -3880,6 +5040,11 @@ ${text}
           });
         });
       }
+
+      // -------------------- PESTAÑA 4: VIDEOCONFERENCIA EN VIVO + CHAT --------------------
+      if (appState.courseTab === 'live') {
+        renderCourseLiveConferenceTab(tabPanel, course);
+      }
     }
 
     // ==================== SHELL PRINCIPAL Y LISTADO DE MATERIAS ====================
@@ -4277,6 +5442,9 @@ ${text}
                       </div>
                     </div>
                     <div class="p-4 pt-0 space-y-2">
+                      <button data-stu-live-cid="${esc(c.id)}" class="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold cursor-pointer">
+                        🎥 Entrar a Clase en Vivo
+                      </button>
                       <button data-stu-qr-cid="${esc(c.id)}" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer">
                         📷 ${hasAttToday ? 'Asistencia Registrada (QR)' : 'Tomar Asistencia QR de esta Materia'}
                       </button>
@@ -4293,6 +5461,14 @@ ${text}
         `;
 
         document.getElementById('stu-dash-my-kardex').addEventListener('click', () => openStudentKardexModal(myId));
+        container.querySelectorAll('[data-stu-live-cid]').forEach(b => {
+          b.addEventListener('click', () => {
+            appState.selectedCourseId = b.getAttribute('data-stu-live-cid');
+            appState.activeView = 'course-detail';
+            appState.courseTab = 'live';
+            renderMain();
+          });
+        });
         container.querySelectorAll('[data-stu-qr-cid]').forEach(b => {
           b.addEventListener('click', () => {
             const c = getCourseById(b.getAttribute('data-stu-qr-cid'));
@@ -4449,6 +5625,9 @@ ${text}
                         </button>
                         <button data-dash-transcribe="${esc(c.id)}|${esc(firstModId)}" class="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-900 font-bold text-left transition cursor-pointer">
                           🎙️ Transcripción IA
+                        </button>
+                        <button data-dash-course-tab="${esc(c.id)}|live" class="col-span-2 p-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-center transition cursor-pointer shadow-xs">
+                          🎥 Iniciar / Abrir Clase en Vivo
                         </button>
                       </div>
                     </div>
@@ -5141,12 +6320,18 @@ ${text}
       updateRealtimeIndicator();
 
       document.getElementById('brand-home-btn').addEventListener('click', () => {
+        if (liveState.isBroadcasting || liveState.isWatching) {
+          stopLiveConferenceSession({ notifyCloud: isAdmin });
+        }
         appState.activeView = 'dashboard';
         renderMain();
       });
 
       root.querySelectorAll('[data-main-nav]').forEach(btn => {
         btn.addEventListener('click', () => {
+          if (liveState.isBroadcasting || liveState.isWatching) {
+            stopLiveConferenceSession({ notifyCloud: isAdmin });
+          }
           appState.activeView = btn.getAttribute('data-main-nav');
           renderMain();
         });
@@ -5156,6 +6341,9 @@ ${text}
       if (cloudAiBtn) cloudAiBtn.addEventListener('click', openCloudAndAiConfigModal);
 
       document.getElementById('btn-logout').addEventListener('click', () => {
+        if (liveState.isBroadcasting || liveState.isWatching) {
+          stopLiveConferenceSession({ notifyCloud: isAdmin });
+        }
         appState.session = null;
         renderAuth();
       });
@@ -5179,6 +6367,10 @@ ${text}
       const modalOpen = !document.getElementById('modal-root').classList.contains('hidden');
       if (modalOpen) {
         refreshOpenAttendanceModalIfVisible();
+        return;
+      }
+      // Nunca interrumpir la videoconferencia ni el reproductor de video en vivo
+      if (appState.activeView === 'course-detail' && appState.courseTab === 'live') {
         return;
       }
       if (isUserTyping()) return;
