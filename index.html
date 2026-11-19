@@ -1190,6 +1190,8 @@
 
     let activeQrScannerInstance = null;
     let activeSpeechRecognition = null;
+    let keepMicOpenFlag = false;
+    let micRestartTimer = null;
 
     function stopActiveQrScanner() {
       if (activeQrScannerInstance) {
@@ -1199,6 +1201,24 @@
           });
         } catch (e) {}
         activeQrScannerInstance = null;
+      }
+    }
+
+    function stopActiveSpeechRecognition() {
+      keepMicOpenFlag = false;
+      if (micRestartTimer) {
+        clearTimeout(micRestartTimer);
+        micRestartTimer = null;
+      }
+      if (activeSpeechRecognition) {
+        const recRef = activeSpeechRecognition;
+        activeSpeechRecognition = null;
+        try {
+          recRef.onend = null;
+          recRef.onerror = null;
+          recRef.onresult = null;
+          recRef.stop();
+        } catch (e) {}
       }
     }
 
@@ -1885,18 +1905,18 @@ ${text}
         `<div class="space-y-4">
           <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-start justify-between gap-3">
             <div>
-              <p class="text-xs font-bold text-indigo-950">Captura de voz en aula + Resumen IA Gemini</p>
-              <p class="text-[11px] text-indigo-700 mt-0.5">Activa el micrófono mientras explicas el tema. El sistema detectará tu voz en español (es-MX) y generará un resumen estructurado para tus estudiantes en esta secuencia.</p>
+              <p class="text-xs font-bold text-indigo-950">Captura de voz continua en aula + Resumen IA Gemini</p>
+              <p class="text-[11px] text-indigo-700 mt-0.5">Al abrir el micrófono permanecerá activo y escuchando de forma continua (incluso tras pausas) hasta que tú decidas cerrarlo.</p>
             </div>
-            <span id="mic-status-pill" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">Micrófono en espera</span>
+            <span id="mic-status-pill" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">Micrófono cerrado</span>
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
             <button type="button" id="btn-start-mic" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer">
-              <span>🎙️ Iniciar Grabación de Voz</span>
+              <span>🎙️ Abrir Micrófono (Continuo)</span>
             </button>
-            <button type="button" id="btn-stop-mic" class="hidden px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold cursor-pointer">
-              ⏹ Detener Micrófono
+            <button type="button" id="btn-stop-mic" class="hidden px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer">
+              ⏹ Cerrar Micrófono
             </button>
             <button type="button" id="btn-generate-ai-summary" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer">
               <span>✨ Generar Resumen con Gemini IA</span>
@@ -1908,7 +1928,7 @@ ${text}
 
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">Transcripción detectada de la explicación del docente</label>
-            <textarea id="inp-teacher-raw" rows="5" placeholder="Habla por el micrófono o escribe/edita aquí los puntos explicados en clase..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">${esc(tr.rawText)}</textarea>
+            <textarea id="inp-teacher-raw" rows="5" placeholder="Abre el micrófono y explica tu clase normalmente. El micrófono seguirá abierto hasta que pulses 'Cerrar Micrófono'..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">${esc(tr.rawText)}</textarea>
             <p id="live-interim-preview" class="text-[11px] text-indigo-600 italic mt-1 min-h-[16px]"></p>
           </div>
 
@@ -1955,12 +1975,26 @@ ${text}
             interimEl.textContent = '';
           });
 
-          btnStart.addEventListener('click', () => {
-            if (!SpeechRec) {
-              showToast('Tu navegador no soporta dictado directo por voz. Usa Chrome o Edge, o escribe el texto.', 'error');
-              return;
+          function setMicUiClosed(label = 'Micrófono cerrado') {
+            pillEl.textContent = label;
+            pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700';
+            btnStart.classList.remove('hidden');
+            btnStop.classList.add('hidden');
+            interimEl.textContent = '';
+          }
+
+          function startContinuousRecognition() {
+            if (!keepMicOpenFlag || !document.getElementById('inp-teacher-raw')) return;
+
+            if (activeSpeechRecognition) {
+              try {
+                activeSpeechRecognition.onend = null;
+                activeSpeechRecognition.onerror = null;
+                activeSpeechRecognition.stop();
+              } catch (e) {}
+              activeSpeechRecognition = null;
             }
-            stopActiveSpeechRecognition();
+
             const rec = new SpeechRec();
             activeSpeechRecognition = rec;
             rec.lang = 'es-MX';
@@ -1968,7 +2002,7 @@ ${text}
             rec.interimResults = true;
 
             rec.onstart = () => {
-              pillEl.textContent = '🔴 Escuchando al docente...';
+              pillEl.textContent = '🔴 Micrófono abierto · Escuchando...';
               pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white mic-recording';
               btnStart.classList.add('hidden');
               btnStop.classList.remove('hidden');
@@ -1987,28 +2021,74 @@ ${text}
               }
               if (finalChunk) {
                 rawEl.value = (rawEl.value ? rawEl.value.trim() + ' ' : '') + finalChunk.trim();
+                rawEl.scrollTop = rawEl.scrollHeight;
               }
               interimEl.textContent = interimTranscript ? `Escuchando: "${interimTranscript}"` : '';
             };
 
-            rec.onerror = () => {
-              pillEl.textContent = 'Micrófono pausado';
-              pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800';
-              btnStart.classList.remove('hidden');
-              btnStop.classList.add('hidden');
+            rec.onerror = event => {
+              const err = event && event.error ? event.error : '';
+              if (err === 'not-allowed' || err === 'service-not-allowed' || err === 'audio-capture') {
+                keepMicOpenFlag = false;
+                stopActiveSpeechRecognition();
+                setMicUiClosed('Permiso de micrófono denegado');
+                showToast('No se pudo acceder al micrófono. Revisa los permisos del navegador.', 'error');
+                return;
+              }
+              // Ante pausas de silencio ('no-speech') o cortes temporales, mantener el micrófono abierto
+              if (keepMicOpenFlag) {
+                pillEl.textContent = '🔴 Micrófono abierto · Esperando voz...';
+                pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white mic-recording';
+              }
             };
 
             rec.onend = () => {
-              pillEl.textContent = 'Grabación finalizada';
-              pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700';
-              btnStart.classList.remove('hidden');
-              btnStop.classList.add('hidden');
+              activeSpeechRecognition = null;
               interimEl.textContent = '';
+              if (keepMicOpenFlag && document.getElementById('inp-teacher-raw')) {
+                // Reiniciar automáticamente para que el micrófono no se cierre hasta que el docente lo decida
+                if (micRestartTimer) clearTimeout(micRestartTimer);
+                micRestartTimer = setTimeout(() => {
+                  if (keepMicOpenFlag && document.getElementById('inp-teacher-raw')) {
+                    startContinuousRecognition();
+                  }
+                }, 250);
+              } else {
+                setMicUiClosed('Micrófono cerrado');
+              }
             };
 
             try {
               rec.start();
-            } catch (e) {}
+            } catch (e) {
+              if (keepMicOpenFlag) {
+                if (micRestartTimer) clearTimeout(micRestartTimer);
+                micRestartTimer = setTimeout(() => {
+                  if (keepMicOpenFlag && document.getElementById('inp-teacher-raw')) {
+                    startContinuousRecognition();
+                  }
+                }, 400);
+              }
+            }
+          }
+
+          btnStart.addEventListener('click', () => {
+            if (!SpeechRec) {
+              showToast('Tu navegador no soporta dictado directo por voz. Usa Chrome o Edge, o escribe el texto.', 'error');
+              return;
+            }
+            keepMicOpenFlag = true;
+            btnStart.classList.add('hidden');
+            btnStop.classList.remove('hidden');
+            pillEl.textContent = '🔴 Abriendo micrófono...';
+            pillEl.className = 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white mic-recording';
+            startContinuousRecognition();
+          });
+
+          btnStop.addEventListener('click', () => {
+            stopActiveSpeechRecognition();
+            setMicUiClosed('Micrófono cerrado por el docente');
+            showToast('Micrófono cerrado', 'info');
           });
 
           btnStop.addEventListener('click', () => {
@@ -2211,11 +2291,21 @@ ${text}
     function openStudentAttendanceScannerModal(courseContext = null) {
       if (!appState.session || appState.session.role !== 'student') return;
       const activeStudent = getStudentById(appState.session.user.id) || appState.session.user;
+      const modalHeading = courseContext
+        ? `Registrar Asistencia QR · ${courseContext.title}`
+        : 'Registrar Asistencia por QR';
 
       openModal(
-        'Registrar Asistencia por QR',
+        modalHeading,
         `<div id="scanner-view-body" class="space-y-4">
-          <p class="text-xs text-slate-600">Escanea el código QR proyectado por tu profesor o pega el código manual de la materia.</p>
+          ${
+            courseContext
+              ? `<div class="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-900">
+                  Registrando asistencia diaria en la materia <strong>${esc(courseContext.title)} (${esc(courseContext.code)})</strong>.
+                </div>`
+              : ''
+          }
+          <p class="text-xs text-slate-600">Escanea el código QR proyectado por tu profesor o pega el código manual de esta materia.</p>
           <div id="qr-reader" class="w-full rounded-xl overflow-hidden border border-slate-300 bg-slate-900 min-h-[240px]"></div>
           <div class="pt-2 border-t border-slate-200">
             <label class="block text-xs font-bold text-slate-700 mb-1">¿Sin cámara? Ingresa el código manual:</label>
@@ -2236,6 +2326,16 @@ ${text}
             }
             const scannedCourseId = parts[1];
             const scannedDate = parts[2];
+
+            if (courseContext && scannedCourseId !== courseContext.id) {
+              const otherCourse = getCourseById(scannedCourseId);
+              showToast(
+                `Este código QR pertenece a "${otherCourse ? otherCourse.title : scannedCourseId}". Entra a esa materia para registrar tu asistencia.`,
+                'error'
+              );
+              return;
+            }
+
             stopActiveQrScanner();
 
             await syncNow({ push: false, silent: true });
@@ -3516,53 +3616,230 @@ ${text}
       // -------------------- PESTAÑA 3: LIBRO DE ASISTENCIA POR MATERIA --------------------
       if (appState.courseTab === 'attendance') {
         const courseAtt = (appState.db.attendance || []).filter(a => a.courseId === course.id && a.studentId !== 'admin');
+
+        if (!isAdmin) {
+          const myRecs = courseAtt.filter(a => a.studentId === userId);
+          const todayStr = getTodayFormatted();
+          const hasToday = myRecs.some(a => a.date === todayStr);
+
+          tabPanel.innerHTML = `
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-xs">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+                <div>
+                  <h3 class="font-bold text-sm sm:text-base text-slate-900">📋 Mi Asistencia en ${esc(course.title)}</h3>
+                  <p class="text-xs text-slate-500">Horario oficial Hermosillo, Sonora (${esc(todayStr)}) · 1 asistencia diaria por materia.</p>
+                </div>
+                <button id="btn-stu-att-tab-qr" class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer">
+                  📷 ${hasToday ? 'Asistencia de Hoy Registrada (Re-escanear)' : 'Escanear QR de esta Materia'}
+                </button>
+              </div>
+              <div class="flex items-center gap-3 text-xs">
+                <span class="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold">Total días presente: ${myRecs.length}</span>
+                <span class="px-3 py-1.5 rounded-xl ${hasToday ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'} font-bold">
+                  Hoy (${esc(todayStr)}): ${hasToday ? '✓ Presente' : 'Pendiente'}
+                </span>
+              </div>
+              <div>
+                <h4 class="text-xs font-bold text-slate-700 mb-2">Fechas registradas en ${esc(course.title)}:</h4>
+                ${
+                  myRecs.length === 0
+                    ? `<p class="text-xs text-slate-400 italic">Aún no tienes asistencias registradas en esta materia.</p>`
+                    : `<div class="flex flex-wrap gap-2">
+                        ${myRecs
+                          .map(
+                            r => `<span class="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold">✓ ${esc(r.date)} · ${esc(r.time || '')} hrs</span>`
+                          )
+                          .join('')}
+                      </div>`
+                }
+              </div>
+            </div>
+          `;
+          document.getElementById('btn-stu-att-tab-qr').addEventListener('click', () => openStudentAttendanceScannerModal(course));
+          return;
+        }
+
+        const selectedDate = appState.calSelectedDate || getTodayFormatted();
+        const dayRecords = courseAtt.filter(a => a.date === selectedDate);
+        const presentSet = new Set(dayRecords.map(a => a.studentId));
+        const pendingStudents = enrolledStudents.filter(s => !presentSet.has(s.id));
+
         tabPanel.innerHTML = `
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-            <h3 class="font-bold text-sm text-slate-900">Registro de Asistencia Diaria · ${esc(course.title)}</h3>
-            <div class="overflow-x-auto">
-              <table class="w-full text-xs text-left">
-                <thead class="bg-slate-900 text-white">
-                  <tr>
-                    <th class="p-3">Estudiante</th>
-                    <th class="p-3">Total Días Presente</th>
-                    <th class="p-3">Fechas Registradas (Hermosillo, Son.)</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y">
-                  ${enrolledStudents
-                    .map(stu => {
-                      const recs = courseAtt.filter(a => a.studentId === stu.id);
-                      return `<tr>
-                        <td class="p-3 font-bold">${esc(stu.name)}</td>
-                        <td class="p-3 font-extrabold text-emerald-700">${recs.length}</td>
-                        <td class="p-3">
-                          <div class="flex flex-wrap gap-1.5">
-                            ${
-                              recs.length === 0
-                                ? `<span class="text-slate-400">Sin asistencias</span>`
-                                : recs
-                                    .map(
-                                      r => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900">
-                                        ${esc(r.date)} (${esc(r.time || '')})
-                                        ${
-                                          isAdmin
-                                            ? `<button data-del-book-att="${esc(r.courseId)}|${esc(r.date)}|${esc(r.studentId)}" class="text-rose-600 font-bold ml-1 hover:underline cursor-pointer">Eliminar</button>`
-                                            : ''
-                                        }
-                                      </span>`
-                                    )
-                                    .join('')
-                            }
-                          </div>
-                        </td>
-                      </tr>`;
-                    })
-                    .join('')}
-                </tbody>
-              </table>
+          <div class="space-y-5">
+            <!-- Encabezado y controles diarios exclusivos de esta materia -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+              <div>
+                <h3 class="font-extrabold text-sm sm:text-base text-slate-900">📋 Toma de Asistencia · ${esc(course.title)}</h3>
+                <p class="text-xs text-slate-500">Zona horaria Hermosillo, Sonora (${esc(getTodayFormatted())}) · 1 asistencia diaria exclusiva para esta materia.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="text-xs font-bold text-slate-600">Fecha:</label>
+                <input id="inp-course-att-date" type="date" value="${esc(selectedDate)}" class="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold" />
+                <button id="btn-course-tab-qr" class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold shadow-xs cursor-pointer">
+                  📷 Proyectar QR de ${esc(course.code)}
+                </button>
+              </div>
+            </div>
+
+            <!-- Panel diario: Pendientes arriba/izquierda para toma manual + Presentes con eliminar -->
+            <div class="grid lg:grid-cols-2 gap-4">
+              <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <h4 class="font-extrabold text-xs sm:text-sm text-amber-950">⏳ Pendientes por capturar (${pendingStudents.length})</h4>
+                  <span class="text-[11px] font-bold text-amber-800">${esc(selectedDate)}</span>
+                </div>
+                ${
+                  pendingStudents.length === 0
+                    ? `<p class="text-xs text-emerald-700 font-bold py-2">✓ Todos los estudiantes inscritos en esta materia tienen asistencia en esta fecha.</p>`
+                    : `<div class="divide-y divide-amber-200/70 max-h-64 overflow-y-auto">
+                        ${pendingStudents
+                          .map(
+                            stu => `<div class="py-2 flex items-center justify-between gap-2 text-xs">
+                              <div>
+                                <span class="font-bold text-slate-900">${esc(stu.name)}</span>
+                                <span class="text-slate-500 ml-1">(${esc(stu.group || 'General')})</span>
+                              </div>
+                              <button data-course-mark-att="${esc(stu.id)}" class="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold cursor-pointer">+ Marcar asistencia</button>
+                            </div>`
+                          )
+                          .join('')}
+                      </div>`
+                }
+              </div>
+
+              <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <h4 class="font-extrabold text-xs sm:text-sm text-emerald-950">✓ Presentes en ${esc(course.code)} (${dayRecords.length})</h4>
+                  <span class="text-[11px] font-bold text-emerald-800">${esc(selectedDate)}</span>
+                </div>
+                ${
+                  dayRecords.length === 0
+                    ? `<p class="text-xs text-slate-500 py-2">Ningún estudiante ha registrado asistencia en esta fecha para ${esc(course.title)}.</p>`
+                    : `<div class="divide-y divide-emerald-200/70 max-h-64 overflow-y-auto">
+                        ${dayRecords
+                          .map(
+                            r => `<div class="py-2 flex items-center justify-between gap-2 text-xs">
+                              <div>
+                                <span class="font-bold text-emerald-950">✓ ${esc(r.studentName)}</span>
+                                <span class="text-slate-500 ml-1.5 font-mono">${esc(r.time || '')} hrs</span>
+                              </div>
+                              <button data-course-del-day-att="${esc(r.studentId)}" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[11px] font-bold cursor-pointer">Eliminar</button>
+                            </div>`
+                          )
+                          .join('')}
+                      </div>`
+                }
+              </div>
+            </div>
+
+            <!-- Historial Completo del Libro de Asistencia de esta Materia -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-xs">
+              <div class="flex items-center justify-between">
+                <h4 class="font-bold text-sm text-slate-900">Historial Completo de Asistencia · ${esc(course.title)}</h4>
+                <span class="text-xs font-semibold text-slate-500">${courseAtt.length} registros acumulados</span>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs text-left">
+                  <thead class="bg-slate-900 text-white">
+                    <tr>
+                      <th class="p-3">Estudiante</th>
+                      <th class="p-3">Total Días Presente</th>
+                      <th class="p-3">Fechas Registradas (Hermosillo, Son.)</th>
+                      <th class="p-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y">
+                    ${
+                      enrolledStudents.length === 0
+                        ? `<tr><td colspan="4" class="p-6 text-center text-slate-500">No hay estudiantes inscritos en esta materia.</td></tr>`
+                        : enrolledStudents
+                            .map(stu => {
+                              const recs = courseAtt.filter(a => a.studentId === stu.id);
+                              return `<tr>
+                                <td class="p-3 font-bold">${esc(stu.name)}</td>
+                                <td class="p-3 font-extrabold text-emerald-700">${recs.length}</td>
+                                <td class="p-3">
+                                  <div class="flex flex-wrap gap-1.5">
+                                    ${
+                                      recs.length === 0
+                                        ? `<span class="text-slate-400">Sin asistencias</span>`
+                                        : recs
+                                            .map(
+                                              r => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900">
+                                                ${esc(r.date)} (${esc(r.time || '')})
+                                                <button data-del-book-att="${esc(r.courseId)}|${esc(r.date)}|${esc(r.studentId)}" class="text-rose-600 font-bold ml-1 hover:underline cursor-pointer">Eliminar</button>
+                                              </span>`
+                                            )
+                                            .join('')
+                                    }
+                                  </div>
+                                </td>
+                                <td class="p-3 text-right">
+                                  ${
+                                    recs.length > 0
+                                      ? `<button data-clear-stu-att="${esc(stu.id)}" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold cursor-pointer">Borrar todas</button>`
+                                      : `<span class="text-slate-300">—</span>`
+                                  }
+                                </td>
+                              </tr>`;
+                            })
+                            .join('')
+                    }
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         `;
+
+        document.getElementById('inp-course-att-date').addEventListener('change', e => {
+          appState.calSelectedDate = e.target.value || getTodayFormatted();
+          renderCourseDetail();
+        });
+
+        document.getElementById('btn-course-tab-qr').addEventListener('click', () => openTeacherQrModal(course.id));
+
+        tabPanel.querySelectorAll('[data-course-mark-att]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const sid = btn.getAttribute('data-course-mark-att');
+            const stu = getStudentById(sid);
+            if (!stu) return;
+            const key = `${course.id}|${selectedDate}|${sid}`;
+            if (appState.db.meta.deletedAttendance) delete appState.db.meta.deletedAttendance[key];
+            const exists = (appState.db.attendance || []).find(
+              a => a.courseId === course.id && a.date === selectedDate && a.studentId === sid
+            );
+            if (!exists) {
+              appState.db.attendance.push({
+                id: uid('att'),
+                courseId: course.id,
+                courseTitle: course.title,
+                studentId: sid,
+                studentName: stu.name,
+                date: selectedDate,
+                time: getNowTimeShort(),
+                createdAtTs: Date.now()
+              });
+            }
+            renderCourseDetail();
+            await saveState(false);
+            showToast(`Asistencia registrada a ${stu.name} en ${course.title}`, 'success');
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-course-del-day-att]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const sid = btn.getAttribute('data-course-del-day-att');
+            const key = `${course.id}|${selectedDate}|${sid}`;
+            appState.db.meta.deletedAttendance[key] = Date.now() + 1000;
+            appState.db.attendance = (appState.db.attendance || []).filter(
+              a => !(a.courseId === course.id && a.date === selectedDate && a.studentId === sid)
+            );
+            renderCourseDetail();
+            await saveState(false);
+            showToast('Asistencia eliminada de la nube', 'info');
+          });
+        });
 
         tabPanel.querySelectorAll('[data-del-book-att]').forEach(btn => {
           btn.addEventListener('click', async () => {
@@ -3575,6 +3852,31 @@ ${text}
             renderCourseDetail();
             await saveState(false);
             showToast('Asistencia eliminada de la nube', 'info');
+          });
+        });
+
+        tabPanel.querySelectorAll('[data-clear-stu-att]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const sid = btn.getAttribute('data-clear-stu-att');
+            const stu = getStudentById(sid);
+            openConfirmModal(
+              'Borrar Asistencias del Estudiante',
+              `¿Deseas eliminar todas las asistencias de "${stu ? stu.name : 'este estudiante'}" en ${course.title}?`,
+              async () => {
+                const now = Date.now() + 1000;
+                (appState.db.attendance || [])
+                  .filter(a => a.courseId === course.id && a.studentId === sid)
+                  .forEach(a => {
+                    appState.db.meta.deletedAttendance[`${a.courseId}|${a.date}|${a.studentId}`] = now;
+                  });
+                appState.db.attendance = (appState.db.attendance || []).filter(
+                  a => !(a.courseId === course.id && a.studentId === sid)
+                );
+                renderCourseDetail();
+                await saveState(false);
+                showToast('Asistencias eliminadas de la materia', 'info');
+              }
+            );
           });
         });
       }
@@ -3920,41 +4222,6 @@ ${text}
       );
     }
 
-    function openQuickQrSelectorModal() {
-      const courses = appState.db.courses || [];
-      if (courses.length === 0) {
-        showToast('Primero crea una materia para proyectar su código QR', 'info');
-        return;
-      }
-      openModal(
-        '📷 Seleccionar Materia para Pase de Lista QR',
-        `<div class="space-y-3">
-          <p class="text-xs text-slate-600">Selecciona la materia para proyectar el código QR del día de hoy (<strong>${esc(getTodayFormatted())}</strong> - Hermosillo, Sonora):</p>
-          <div class="space-y-2">
-            ${courses
-              .map(
-                c => `<button data-launch-qr-cid="${esc(c.id)}" class="w-full p-3.5 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/40 flex items-center justify-between text-left transition cursor-pointer">
-                  <div>
-                    <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-200 text-slate-800">${esc(c.code)}</span>
-                    <p class="font-bold text-sm text-slate-900 mt-1">${esc(c.title)}</p>
-                  </div>
-                  <span class="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-extrabold">Abrir QR →</span>
-                </button>`
-              )
-              .join('')}
-          </div>
-        </div>`,
-        () => {
-          document.querySelectorAll('[data-launch-qr-cid]').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const cid = btn.getAttribute('data-launch-qr-cid');
-              openTeacherQrModal(cid);
-            });
-          });
-        }
-      );
-    }
-
     // ==================== VISTAS PRINCIPALES DEL SISTEMA ====================
     function renderDashboardView(container) {
       const isAdmin = appState.session.role === 'admin';
@@ -3979,7 +4246,6 @@ ${text}
                 <p class="text-xs text-indigo-100 mt-1">Fecha actual: <strong>${esc(todayStr)}</strong> · Asistencias registradas hoy: <strong>${myTodayAtt.length} de ${myCourses.length} materias</strong></p>
               </div>
               <div class="flex flex-wrap gap-2">
-                <button id="stu-dash-scan-qr" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer">📷 Escanear QR de Asistencia</button>
                 <button id="stu-dash-my-kardex" class="px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs cursor-pointer">📊 Ver Mi Boleta General</button>
               </div>
             </div>
@@ -4010,9 +4276,14 @@ ${text}
                         </div>
                       </div>
                     </div>
-                    <div class="p-4 pt-0 flex gap-2">
-                      <button data-stu-open-cid="${esc(c.id)}" class="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer">Abrir Secuencias</button>
-                      <button data-stu-grade-cid="${esc(c.id)}" class="px-3 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold cursor-pointer">Calificaciones</button>
+                    <div class="p-4 pt-0 space-y-2">
+                      <button data-stu-qr-cid="${esc(c.id)}" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer">
+                        📷 ${hasAttToday ? 'Asistencia Registrada (QR)' : 'Tomar Asistencia QR de esta Materia'}
+                      </button>
+                      <div class="flex gap-2">
+                        <button data-stu-open-cid="${esc(c.id)}" class="flex-1 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer">Secuencias</button>
+                        <button data-stu-grade-cid="${esc(c.id)}" class="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold cursor-pointer">Calificaciones</button>
+                      </div>
                     </div>
                   </div>`;
                 })
@@ -4021,8 +4292,13 @@ ${text}
           </div>
         `;
 
-        document.getElementById('stu-dash-scan-qr').addEventListener('click', () => openStudentAttendanceScannerModal(null));
         document.getElementById('stu-dash-my-kardex').addEventListener('click', () => openStudentKardexModal(myId));
+        container.querySelectorAll('[data-stu-qr-cid]').forEach(b => {
+          b.addEventListener('click', () => {
+            const c = getCourseById(b.getAttribute('data-stu-qr-cid'));
+            if (c) openStudentAttendanceScannerModal(c);
+          });
+        });
         container.querySelectorAll('[data-stu-open-cid]').forEach(b => {
           b.addEventListener('click', () => {
             appState.selectedCourseId = b.getAttribute('data-stu-open-cid');
@@ -4074,12 +4350,9 @@ ${text}
                   <span class="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold">🕒 Hermosillo, Sonora: ${esc(todayStr)} · ${esc(getNowTimeShort())} hrs</span>
                 </div>
                 <h2 class="text-2xl sm:text-3xl font-extrabold mt-2">Bienvenido, Mtro. Francisco J. Tapia López</h2>
-                <p class="text-xs sm:text-sm text-slate-300 mt-1">Gestiona tus materias, secuencias con IA Gemini, asistencias QR por asignatura y el Libro de Calificaciones en tiempo real.</p>
+                <p class="text-xs sm:text-sm text-slate-300 mt-1">Gestiona tus materias, secuencias con IA Gemini, asistencias dentro de cada asignatura y el Libro de Calificaciones en tiempo real.</p>
               </div>
               <div class="flex flex-wrap gap-2">
-                <button id="dash-btn-quick-qr" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow-md cursor-pointer flex items-center gap-1.5">
-                  📷 Pase de Lista QR Rápido
-                </button>
                 <button id="dash-btn-new-course" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md cursor-pointer">
                   + Nueva Materia
                 </button>
@@ -4110,13 +4383,13 @@ ${text}
               <p class="text-[11px] text-emerald-700 font-semibold mt-1 group-hover:underline">Ver directorio y boletas →</p>
             </button>
 
-            <button data-goto-view="attendance" class="bg-white hover:bg-amber-50/40 p-4 rounded-2xl border border-slate-200 shadow-xs text-left transition cursor-pointer group">
+            <button data-goto-view="courses" class="bg-white hover:bg-amber-50/40 p-4 rounded-2xl border border-slate-200 shadow-xs text-left transition cursor-pointer group">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-bold text-slate-500">Asistencias Hoy</span>
                 <span class="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">📋</span>
               </div>
               <p class="text-2xl font-extrabold text-slate-900 mt-2">${todayAtt.length}</p>
-              <p class="text-[11px] text-amber-700 font-semibold mt-1 group-hover:underline">Fecha: ${esc(todayStr)} →</p>
+              <p class="text-[11px] text-amber-700 font-semibold mt-1 group-hover:underline">Se toma en cada materia →</p>
             </button>
 
             <button data-goto-view="grades" class="bg-white hover:bg-rose-50/40 p-4 rounded-2xl border border-slate-200 shadow-xs text-left transition cursor-pointer group">
@@ -4143,7 +4416,7 @@ ${text}
             <div class="flex items-center justify-between">
               <div>
                 <h3 class="font-extrabold text-base text-slate-900">Control Rápido por Materia</h3>
-                <p class="text-xs text-slate-500">Accede en un solo clic a las secuencias, pase de lista QR, transcripción con micrófono o calificaciones de cada asignatura.</p>
+                <p class="text-xs text-slate-500">Accede en un solo clic a las secuencias, asistencia de la materia, transcripción continua o calificaciones.</p>
               </div>
               <button data-goto-view="courses" class="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">Ver catálogo completo →</button>
             </div>
@@ -4168,8 +4441,8 @@ ${text}
                         <button data-dash-course-tab="${esc(c.id)}|content" class="p-2.5 rounded-xl bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-800 font-bold text-left transition cursor-pointer">
                           📚 Secuencias (${(c.modules || []).length})
                         </button>
-                        <button data-dash-qr="${esc(c.id)}" class="p-2.5 rounded-xl bg-amber-100 hover:bg-amber-400 text-amber-950 font-extrabold text-left transition cursor-pointer">
-                          📷 Pase QR Hoy
+                        <button data-dash-course-tab="${esc(c.id)}|attendance" class="p-2.5 rounded-xl bg-amber-100 hover:bg-amber-400 text-amber-950 font-extrabold text-left transition cursor-pointer">
+                          📋 Asistencia (${cTodayAtt})
                         </button>
                         <button data-dash-course-tab="${esc(c.id)}|gradebook" class="p-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-900 font-bold text-left transition cursor-pointer">
                           📊 Calificaciones
@@ -4185,7 +4458,7 @@ ${text}
             </div>
           </div>
 
-          <!-- Panel Dual Inferior: Entregas Pendientes por Calificar + Asistencia de Hoy -->
+          <!-- Panel Dual Inferior: Entregas Pendientes por Calificar + Asistencia de Hoy por Materia -->
           <div class="grid lg:grid-cols-2 gap-5">
             <!-- Bandeja de Entregas Pendientes -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 shadow-xs">
@@ -4222,48 +4495,43 @@ ${text}
               }
             </div>
 
-            <!-- Resumen de Asistencia de Hoy y Alumnos Recientes -->
+            <!-- Resumen de Asistencia de Hoy por Materia -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 shadow-xs">
               <div class="flex items-center justify-between">
                 <div>
-                  <h3 class="font-extrabold text-sm text-slate-900">📋 Asistencias Capturadas Hoy (${esc(todayStr)})</h3>
-                  <p class="text-[11px] text-slate-500">Registros en tiempo real por materia en horario de Hermosillo, Sonora.</p>
+                  <h3 class="font-extrabold text-sm text-slate-900">📋 Asistencias de Hoy por Materia (${esc(todayStr)})</h3>
+                  <p class="text-[11px] text-slate-500">Las asistencias se capturan y gestionan dentro de cada materia.</p>
                 </div>
-                <button data-goto-view="attendance" class="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">Control de Asistencia →</button>
               </div>
-              ${
-                todayAtt.length === 0
-                  ? `<div class="p-6 rounded-xl bg-slate-50 border border-dashed text-center space-y-2">
-                      <p class="text-xs text-slate-500">Aún no se han registrado asistencias el día de hoy.</p>
-                      <button id="dash-empty-launch-qr" class="px-3.5 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-extrabold cursor-pointer">📷 Iniciar Pase de Lista QR</button>
-                    </div>`
-                  : `<div class="divide-y max-h-64 overflow-y-auto">
-                      ${todayAtt
-                        .slice()
-                        .reverse()
-                        .slice(0, 10)
-                        .map(
-                          r => `<div class="py-2 flex items-center justify-between text-xs">
+              <div class="divide-y max-h-64 overflow-y-auto">
+                ${
+                  courses.length === 0
+                    ? `<p class="text-xs text-slate-500 py-4 text-center">No hay materias activas.</p>`
+                    : courses
+                        .map(c => {
+                          const cTodayCount = todayAtt.filter(a => a.courseId === c.id).length;
+                          const cTotalStu = students.filter(s => (c.enrolledStudentIds || []).includes(s.id)).length;
+                          return `<div class="py-2.5 flex items-center justify-between gap-2 text-xs">
                             <div>
-                              <span class="font-bold text-emerald-800">✓ ${esc(r.studentName)}</span>
-                              <span class="text-slate-500 ml-1">· ${esc(r.courseTitle || r.courseId)}</span>
+                              <span class="font-bold text-slate-900">${esc(c.title)}</span>
+                              <span class="text-slate-500 ml-1">(${cTodayCount}/${cTotalStu} hoy)</span>
                             </div>
-                            <span class="text-[11px] font-mono text-slate-500">${esc(r.time || '')} hrs</span>
-                          </div>`
-                        )
-                        .join('')}
-                    </div>`
-              }
+                            <div class="flex items-center gap-1.5 shrink-0">
+                              <button data-dash-qr="${esc(c.id)}" class="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold cursor-pointer">📷 QR</button>
+                              <button data-dash-course-tab="${esc(c.id)}|attendance" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer">Lista</button>
+                            </div>
+                          </div>`;
+                        })
+                        .join('')
+                }
+              </div>
             </div>
           </div>
         </div>
       `;
 
-      document.getElementById('dash-btn-quick-qr').addEventListener('click', openQuickQrSelectorModal);
       document.getElementById('dash-btn-new-course').addEventListener('click', () => openNewCourseModal(null));
       document.getElementById('dash-btn-new-student').addEventListener('click', () => openStudentFormModal(null));
-      const emptyQrBtn = document.getElementById('dash-empty-launch-qr');
-      if (emptyQrBtn) emptyQrBtn.addEventListener('click', openQuickQrSelectorModal);
 
       container.querySelectorAll('[data-goto-view]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -4805,145 +5073,6 @@ ${text}
       });
     }
 
-    function renderAttendanceCenterView(container) {
-      const courses = appState.db.courses || [];
-      if (courses.length === 0) {
-        container.innerHTML = `<div class="bg-white rounded-2xl p-8 text-center border">No hay materias activas.</div>`;
-        return;
-      }
-      if (!appState.selectedCourseId || !getCourseById(appState.selectedCourseId)) {
-        appState.selectedCourseId = courses[0].id;
-      }
-      const course = getCourseById(appState.selectedCourseId);
-      const selectedDate = appState.calSelectedDate || getTodayFormatted();
-      const enrolledStudents = (appState.db.students || []).filter(
-        s => !isDemoStudentRecord(s) && (course.enrolledStudentIds || []).includes(s.id)
-      );
-      const courseAtt = (appState.db.attendance || []).filter(a => a.courseId === course.id && a.studentId !== 'admin');
-      const dayRecords = courseAtt.filter(a => a.date === selectedDate);
-      const presentSet = new Set(dayRecords.map(a => a.studentId));
-      const pendingStudents = enrolledStudents.filter(s => !presentSet.has(s.id));
-
-      container.innerHTML = `
-        <div class="space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-            <div>
-              <h2 class="text-xl font-extrabold text-slate-900">📋 Centro de Control de Asistencia Diaria por Materia</h2>
-              <p class="text-xs text-slate-500">Horario oficial: Hermosillo, Sonora (${esc(getTodayFormatted())}) · 1 asistencia diaria por asignatura.</p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <select id="sel-att-course" class="px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 text-xs font-extrabold">
-                ${courses.map(c => `<option value="${esc(c.id)}" ${c.id === course.id ? 'selected' : ''}>${esc(c.code)} — ${esc(c.title)}</option>`).join('')}
-              </select>
-              <input id="inp-att-date" type="date" value="${esc(selectedDate)}" class="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold" />
-              <button id="btn-att-center-qr" class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer">📷 Proyectar QR de ${esc(course.code)}</button>
-            </div>
-          </div>
-
-          <div class="grid lg:grid-cols-2 gap-5">
-            <!-- Pendientes en la parte superior / izquierda para captura manual rápida -->
-            <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
-              <div class="flex items-center justify-between">
-                <h3 class="font-extrabold text-sm text-amber-950">⏳ Alumnos Pendientes de Asistencia (${pendingStudents.length})</h3>
-                <span class="text-xs font-semibold text-amber-800">${esc(selectedDate)}</span>
-              </div>
-              ${
-                pendingStudents.length === 0
-                  ? `<p class="text-xs text-emerald-700 font-bold py-4">✓ Todos los alumnos inscritos en ${esc(course.title)} tienen asistencia registrada en esta fecha.</p>`
-                  : `<div class="divide-y divide-amber-200/70 max-h-80 overflow-y-auto">
-                      ${pendingStudents
-                        .map(
-                          stu => `<div class="py-2 flex items-center justify-between gap-2 text-xs">
-                            <div>
-                              <span class="font-bold text-slate-900">${esc(stu.name)}</span>
-                              <span class="text-slate-500 ml-1">(${esc(stu.group || 'General')})</span>
-                            </div>
-                            <button data-center-mark-att="${esc(stu.id)}" class="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer">+ Marcar Asistencia Manual</button>
-                          </div>`
-                        )
-                        .join('')}
-                    </div>`
-              }
-            </div>
-
-            <!-- Presentes con opción de eliminar -->
-            <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-3">
-              <div class="flex items-center justify-between">
-                <h3 class="font-extrabold text-sm text-emerald-950">✓ Asistencias Registradas (${dayRecords.length})</h3>
-                <span class="text-xs font-semibold text-emerald-800">${esc(course.title)}</span>
-              </div>
-              ${
-                dayRecords.length === 0
-                  ? `<p class="text-xs text-slate-500 py-4">Sin registros de asistencia en esta fecha para esta materia.</p>`
-                  : `<div class="divide-y divide-emerald-200/70 max-h-80 overflow-y-auto">
-                      ${dayRecords
-                        .map(
-                          r => `<div class="py-2 flex items-center justify-between gap-2 text-xs">
-                            <div>
-                              <span class="font-bold text-emerald-950">✓ ${esc(r.studentName)}</span>
-                              <span class="text-slate-500 ml-1.5 font-mono">${esc(r.time || '')} hrs</span>
-                            </div>
-                            <button data-center-del-att="${esc(r.studentId)}" class="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold cursor-pointer">Eliminar</button>
-                          </div>`
-                        )
-                        .join('')}
-                    </div>`
-              }
-            </div>
-          </div>
-        </div>
-      `;
-
-      document.getElementById('sel-att-course').addEventListener('change', e => {
-        appState.selectedCourseId = e.target.value;
-        renderAttendanceCenterView(container);
-      });
-
-      document.getElementById('inp-att-date').addEventListener('change', e => {
-        appState.calSelectedDate = e.target.value || getTodayFormatted();
-        renderAttendanceCenterView(container);
-      });
-
-      document.getElementById('btn-att-center-qr').addEventListener('click', () => openTeacherQrModal(course.id));
-
-      container.querySelectorAll('[data-center-mark-att]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const sid = btn.getAttribute('data-center-mark-att');
-          const stu = getStudentById(sid);
-          if (!stu) return;
-          const key = `${course.id}|${selectedDate}|${sid}`;
-          if (appState.db.meta.deletedAttendance) delete appState.db.meta.deletedAttendance[key];
-          appState.db.attendance.push({
-            id: uid('att'),
-            courseId: course.id,
-            courseTitle: course.title,
-            studentId: sid,
-            studentName: stu.name,
-            date: selectedDate,
-            time: getNowTimeShort(),
-            createdAtTs: Date.now()
-          });
-          renderAttendanceCenterView(container);
-          await saveState(false);
-          showToast(`Asistencia registrada a ${stu.name}`, 'success');
-        });
-      });
-
-      container.querySelectorAll('[data-center-del-att]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const sid = btn.getAttribute('data-center-del-att');
-          const key = `${course.id}|${selectedDate}|${sid}`;
-          appState.db.meta.deletedAttendance[key] = Date.now() + 1000;
-          appState.db.attendance = (appState.db.attendance || []).filter(
-            a => !(a.courseId === course.id && a.date === selectedDate && a.studentId === sid)
-          );
-          renderAttendanceCenterView(container);
-          await saveState(false);
-          showToast('Asistencia eliminada', 'info');
-        });
-      });
-    }
-
     function renderMain() {
       if (!appState.session) {
         renderAuth();
@@ -4959,8 +5088,7 @@ ${text}
             { id: 'dashboard', label: '🏠 Inicio', badge: '' },
             { id: 'courses', label: '📚 Materias', badge: coursesCount },
             { id: 'students', label: '👨‍🎓 Alumnos', badge: studentsCount },
-            { id: 'grades', label: '📊 Calificaciones', badge: '100' },
-            { id: 'attendance', label: '📋 Asistencias', badge: '' }
+            { id: 'grades', label: '📊 Calificaciones', badge: '100' }
           ]
         : [
             { id: 'dashboard', label: '🏠 Inicio', badge: '' },
@@ -4980,7 +5108,7 @@ ${text}
               </span>
             </div>
 
-            <!-- Menú de Navegación Principal Completo -->
+            <!-- Menú de Navegación Principal -->
             <nav class="flex flex-wrap items-center gap-1.5">
               ${navItems
                 .map(item => {
@@ -4999,7 +5127,7 @@ ${text}
               ${
                 isAdmin
                   ? `<button id="btn-open-cloud-ai" title="Configurar Nube e IA Gemini" class="px-3 py-1.5 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-bold cursor-pointer">☁️ Nube / IA</button>`
-                  : `<button id="nav-scan-qr" class="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer">📷 Escanear QR</button>`
+                  : ''
               }
               <span class="text-xs text-slate-300 hidden lg:inline ml-1 font-medium">${esc(appState.session.user.name)}</span>
               <button id="btn-logout" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer">Salir</button>
@@ -5027,9 +5155,6 @@ ${text}
       const cloudAiBtn = document.getElementById('btn-open-cloud-ai');
       if (cloudAiBtn) cloudAiBtn.addEventListener('click', openCloudAndAiConfigModal);
 
-      const scanBtn = document.getElementById('nav-scan-qr');
-      if (scanBtn) scanBtn.addEventListener('click', () => openStudentAttendanceScannerModal(null));
-
       document.getElementById('btn-logout').addEventListener('click', () => {
         appState.session = null;
         renderAuth();
@@ -5044,8 +5169,6 @@ ${text}
         renderStudentsView(container);
       } else if (appState.activeView === 'grades' && isAdmin) {
         renderGradesCenterView(container);
-      } else if (appState.activeView === 'attendance' && isAdmin) {
-        renderAttendanceCenterView(container);
       } else {
         renderDashboardView(container);
       }
